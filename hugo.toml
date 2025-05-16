@@ -1,0 +1,40 @@
+baseURL = "https://elkotito.github.io/"
+languageCode = "en-us"
+title = "Mateusz Pieniak"
+theme = "PaperMod"
+canonifyURLs = true
+enableRobotsTXT = true
+
+[params]
+author = "Mateusz Pieniak"
+ShowReadingTime = true
+ShowPostNavLinks = true
+ShowShareButtons = true
+ShowCodeCopyButtons = true
+ShowToc = true
+TocOpen = true
+fuse = true
+homeInfoParams = { Title = "Cześć 👋", Content = "I'm Mateusz Pieniak. I learn in public so AI can learn better & faster. Always one print statement away from clarity." }
+assets = { customCSS = ["css/extended/custom.css"] }
+socialIcons = [
+    { name = "github", url = "https://github.com/elkotito" },
+    { name = "linkedin", url = "https://linkedin.com/in/mateusz-pieniak/" },
+    { name = "rss", url = "/index.xml"}
+]
+
+[menu]
+main = [
+    { name = "Posts", url = "/", weight = 1 },
+    { identifier = "search", name = "Search", url = "/search/", weight = 2 },
+    { name = "Tags", url = "/tags/", weight = 3 },
+    { name = "RSS", url = "/index.xml", weight = 4 }
+]
+
+[outputFormats.RobotsTXT]
+mediaType = "text/plain"
+baseName = "robots"
+isPlainText = true
+notAlternative = true
+
+[outputs]
+home = ["HTML", "RSS", "JSON", "RobotsTXT"]
