@@ -30,11 +30,6 @@ main = [
     { name = "RSS", url = "/index.xml", weight = 4 }
 ]
 
-[outputFormats.RobotsTXT]
-mediaType = "text/plain"
-baseName = "robots"
-isPlainText = true
-notAlternative = true
 
 [outputs]
-home = ["HTML", "RSS", "JSON", "RobotsTXT"]
+home = ["HTML", "RSS"]
