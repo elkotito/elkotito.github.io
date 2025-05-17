@@ -8,13 +8,14 @@ enableRobotsTXT = true
 [params]
 author = "Mateusz Pieniak"
 ShowReadingTime = true
-ShowPostNavLinks = true
+ShowPostNavLinks = false
 ShowShareButtons = true
 ShowCodeCopyButtons = true
 ShowToc = true
 TocOpen = true
 fuse = true
-homeInfoParams = { Title = "Cześć 👋", Content = "I'm Mateusz Pieniak. I learn in public so AI can learn better & faster. Always one print statement away from clarity." }
+math = true
+homeInfoParams = { Title = "Cześć 👋", Content = "I'm Mateusz and I learn in public so AI can be better. Always one print statement away from clarity." }
 assets = { customCSS = ["css/extended/custom.css"] }
 socialIcons = [
     { name = "github", url = "https://github.com/elkotito" },
