@@ -1,7 +1,7 @@
 baseURL = "https://elkotito.github.io/"
 languageCode = "en-us"
 title = "Mateusz Pieniak"
-description = "Mateusz Pieniak's personal blog on AI, Machine Learning and Software Engineering"
+description = "Mateusz Pieniak's Blog on AI, Machine Learning and Software Engineering"
 theme = "PaperMod"
 canonifyURLs = true
 enableRobotsTXT = true
@@ -35,4 +35,4 @@ main = [
 
 
 [outputs]
-home = ["HTML", "RSS"]
+home = ["HTML", "RSS", "JSON"]
