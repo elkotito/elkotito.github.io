@@ -1,6 +1,7 @@
 baseURL = "https://elkotito.github.io/"
 languageCode = "en-us"
 title = "Mateusz Pieniak"
+description = "Mateusz Pieniak Blog. AI, Machine Learning, Software Engineering."
 theme = "PaperMod"
 canonifyURLs = true
 enableRobotsTXT = true
