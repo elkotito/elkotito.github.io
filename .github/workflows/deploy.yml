@@ -23,9 +23,6 @@ jobs:
       - name: Build site
         run: hugo --minify
 
-      - name: List files in public directory
-        run: ls -R ./public
-
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v3
         with:

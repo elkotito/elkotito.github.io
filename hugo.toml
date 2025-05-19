@@ -6,6 +6,7 @@ canonifyURLs = true
 enableRobotsTXT = true
 
 [params]
+defaultTheme = "light"
 author = "Mateusz Pieniak"
 ShowReadingTime = true
 ShowPostNavLinks = false
