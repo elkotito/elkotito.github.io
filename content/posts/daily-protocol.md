@@ -262,3 +262,5 @@ Annual blood tests:
 # Conclusion
 
 I don't want to provide any friction to anybody. I showed a result of my food anlaysis and my literature reads. I believe that we are more productive in life if we follow some systems instead of improvising all time, however it's also important to gather knowledge about nutrition and life, because life is often unpredictable and we are push to improvise (e.g. while traveling, family stuff, etc.)
+
+Don't be fooled that a single thing will change your life. It's all about experimentation and being consistent. For example a wind down routine and dimming light will be more beneficial than kiwis or blue blocking glasses.
