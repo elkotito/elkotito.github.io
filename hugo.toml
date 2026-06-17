@@ -47,7 +47,7 @@ changefreq = "weekly"
 priority = 0.5
 
 [services.googleAnalytics]
-ID = "HSMGQ2QCTC"
+ID = "G-HSMGQ2QCTC"
 
 [markup.goldmark.extensions.passthrough]
 enable = true
