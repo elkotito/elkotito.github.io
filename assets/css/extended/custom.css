@@ -1,3 +1,37 @@
 .first-entry {
-    min-height: unset !important;
+  min-height: unset !important;
+}
+
+/*:root {
+  --main-width: 900px;
+}*/
+
+.content {
+  max-width: 80ch; /* albo np. 720–800px */
+  margin: 0 auto;
+}
+
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 0.75em 0.5em;
+  margin: 1em 0;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
+}
+
+/* WebKit (Chrome, Safari, Edge) */
+.katex-display::-webkit-scrollbar {
+  height: 6px;
+}
+.katex-display::-webkit-scrollbar-track {
+  background: transparent;
+}
+.katex-display::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+.katex-display::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.4);
 }

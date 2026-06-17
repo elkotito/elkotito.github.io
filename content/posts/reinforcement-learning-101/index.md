@@ -1,233 +1,436 @@
 ---
 title: "Reinforcement Learning 101"
 description: "Introduction to classical model-based Reinforcement Learning techniques."
-date: 2025-05-19
-tags: ["Reinforcement Learning", "Bellman Optimality Equation", "Bellman Expectation Equation", "Banach Fixed-Point Theorem", "Contraction Mapping", "Value Iteration", "Policy Iteration"]
+date: 2026-06-17
+tags:
+  [
+    "Reinforcement Learning",
+    "Bellman Optimality Equation",
+    "Bellman Expectation Equation",
+    "Banach Fixed-Point Theorem",
+    "Contraction Mapping",
+    "Value Iteration",
+    "Policy Iteration",
+    "Generalized Policy Iteration",
+  ]
 draft: false
 ---
 
 # Introduction
-Imagine playing a computer game. In such a game you observe the screen and based on what you see on the screen you make a decision.
-With each decision you either get some points or not. Making a decision changes what you see on the screen. 
-The same process we could describe in a more abstract mathematical language. In such a formal language, you are the agent.
-* You observe a state of the environment $s_t$ given a timestamp $t$.
-* You execute an action $a_t$ by following your policy function $\pi$.
-* You get a reward $r_t$. 
-* The environment transitions to a new state $s_{t+1}$.    
 
-The goal of reinforcement learning is to find an optimal policy function $\pi^*$ that maximizes the total future rewards $G_t$. In other words, you want to find actions that let you get as many points as possible in the game.
+Reinforcement learning is about learning from consequences. Unlike supervised learning, nobody tells the agent the correct action for every situation. The agent tries actions, receives rewards, and slowly discovers which behavior leads to better long-term outcomes.
 
-$$
-G_t = R_{t} + R_{t+1} + R_{t+2} + \ldots = \sum_{k=0}^{\infty} R_{t+k}
-$$
+Imagine playing a computer game. You observe the screen, make a decision, and the game responds. Sometimes you get points immediately, sometimes nothing happens, and sometimes the real consequence appears much later. The same idea can be described in a more abstract mathematical language. In such a formal language, you are the agent and the game is the environment.
 
-However, with such a definition of $G_t$, the sum will be infinite which imposes certain mathematical complications. 
-Having said that, for mathematical convenience, we modify and replace $G_t$ with discounted cumulative rewards where $0 \leq \gamma \leq 1$ represents a discount factor.
+- You observe a state of the environment $s_t$ at a timestamp $t$.
+- You execute an action $a_t$ by following your policy function $\pi$, which chooses actions based on the current state of the environment $s_t$.
+- You get a reward $r_t$.
+- The environment transitions to a new state $s_{t+1}$.
+
+This loop is simple, but the hard part is credit assignment. An action can look useless now and still be important because it leads to a better state later. If you move toward a key in a game, the reward may appear only many steps later when the key opens a door.
+
+So instead of asking which action gives the biggest reward immediately, reinforcement learning asks a broader question: which action puts the agent on a path with the best future? Here, the best future means the one with the largest accumulated reward, not necessarily the largest next reward. To make that question precise, we need one number that summarizes all future rewards from the current time step. This number is called the return $g_t$.
 
 $$
-G_t = R_{t} + \gamma R_{t+1} + \gamma^2 R_{t+2} + \ldots = \sum_{k=0}^{\infty} \gamma^k R_{t+k} = R_{t} + \gamma G_{t+1}
+g_t = r_{t} + r_{t+1} + r_{t+2} + \ldots = \sum_{k=0}^{\infty} r_{t+k}
 $$
 
-Why is it finite? To illustrate that, we can assume a constant reward for each timestamp $R_t = R$, and we will end up with a finite geometric series.
+However, if the game continues forever, this definition of $g_t$ may produce an infinite sum, which imposes certain mathematical complications. In practice, we usually replace $g_t$ with discounted cumulative rewards where $0 \leq \gamma \leq 1$ represents a discount factor.
 
 $$
-G_t = R + \gamma R + \gamma^2 R + \ldots = R \sum_{k=0}^{\infty} \gamma^k = \frac{R}{1-\gamma}
+g_t = r_{t} + \gamma r_{t+1} + \gamma^2 r_{t+2} + \ldots = \sum_{k=0}^{\infty} \gamma^k r_{t+k}
 $$
 
-What mathematical framework should we use to model such a decision-making process? A natural choice is probability theory because
-usually our environment is not deterministic. It means that if we are in a state $s_t$, and we take an action $a_t$ we don't always get the same reward $r_t$.
-Having said that, we can represent $S_t, R_t, A_t$ as random variables and the policy function $\pi$ will be represented as a probability distribution over actions.
-Notice that $G_t$ will also be a random variable, hence now we would need to maximize the expected discounted cumulative reward.
+Discounting has two purposes.
+
+First, the mathematical reason. When $\gamma < 1$, rewards far in the future become smaller and the infinite sum can stay finite. To see this, assume a constant reward at each timestamp $r_t = r$. Then the discounted return becomes a finite geometric series.
+
+$$
+g_t = r + \gamma r + \gamma^2 r + \ldots = r \sum_{k=0}^{\infty} \gamma^k = \frac{r}{1-\gamma}
+$$
+
+Second, the modeling reason. The discount factor limits the effective horizon of an action. A reward $k$ steps in the future is worth $\gamma^k$ today, so a smaller $\gamma$ makes the agent more short-sighted, while a larger $\gamma$ makes it more patient.
+
+At this point we have a way to score one realized future, but in reinforcement learning the future is often not fully predictable. The same state and action can lead to different next states or rewards. Instead of ignoring this randomness, we need a framework that can model it. This is why we use probabilistic theory and move from concrete values to random variables. A realized state $s_t$ becomes a random variable $S_t$, a realized action $a_t$ becomes $A_t$, a realized reward $r_t$ becomes $R_t$, and a realized return $g_t$ becomes $G_t$.
+
+Randomness appears in two places.
+
+- Environment randomness: if $S_t = s_t$ and $A_t = a_t$, we don't always have to get the same next state $S_{t+1}$ or the same reward $R_t$. In a game, the same move can miss, slip, or trigger a random event.
+- Policy randomness: the policy itself can also be stochastic. Instead of always choosing one action, $\pi(a \mid s)$ can assign probabilities to actions. This is useful for exploration, for avoiding commitment to a bad action too early, and for describing strategies that intentionally mix actions.
+
+With this probabilistic notation, the policy function $\pi$ will be represented as a probability distribution over actions.
+The discounted return is also a random variable now:
+
+$$
+G_t = R_{t} + \gamma R_{t+1} + \gamma^2 R_{t+2} + \ldots = \sum_{k=0}^{\infty} \gamma^k R_{t+k}
+$$
+
+The learning goal is to find a policy $\pi$ that makes future return as large as possible. Since $G_t$ is random, this means maximizing its expectation: the expected discounted cumulative reward.
 
 $$
 \mathbb{E}[G_t \mid S_t = s_t, A_{t-1} = a_{t-1}, S_{t-1} = s_{t-1}, \ldots, S_0 = s_0, A_0 = a_0]
 $$
 
+This expression conditions on the entire history of the episode. In principle, the value of the current situation could depend on every state and action that happened before. That is difficult to work with, so in reinforcement learning we often assume that the process is a Markov Decision Process (MDP).
 
-For mathematical simplicity, we often assume such a process to be a Markov Decision Process (MDP) i.e. the next state depends only on the current state and action, not the whole history of states and actions.
+The Markov assumption says that the current state already contains all information needed for the next transition. Once we know the current state $s_t$ and action $a_t$, the next state does not depend on the older history.
 
 $$
 p(s_{t+1} \mid s_t, a_t, s_{t-1}, a_{t-1}, \ldots, s_0, a_0) = p(s_{t+1} \mid s_t, a_t)
 $$
 
-It allows us to simplify the expected discounted cumulative reward and derive Bellman Equations in the next section.
+This lets us replace the full-history question with a state-based question: if I am in state $s$, what return should I expect from here? That is the object we will formalize as the value function in the next section.
 
 $$
 \mathbb{E}[G_t \mid S_t = s]
 $$
 
-
 # Bellman Equations
 
-## Value function
+In the introduction, we defined the discounted return as a sum of future rewards. To derive Bellman equations, we now use the same return in a recursive form: the return from today is the immediate reward plus the discounted return from the next time step.
 
-We already know that the goal of reinforcement learning is to find an optimal policy $\pi^* (s)$ that maximizes the expected discounted cumulative reward for every state $s$. 
-In reinforcement learning, we define our objective as a value function $v_\pi(s)$. 
+$$
+G_t = R_t + \gamma G_{t+1}
+$$
+
+This recursive form is the starting point for the Bellman equations. Once we define the value function as the expected return, we will substitute this recursive expression for $G_t$ into that expectation.
+
+## Value Function
+
+The goal of reinforcement learning is to find an optimal policy $\pi^*(s)$ that maximizes the expected discounted cumulative reward for every state $s$. The star in $\pi^*$ means optimal.
+
+Before we can find the best policy, we need a way to evaluate a policy. For a policy $\pi$, we define $v_\pi(s)$ as the expected return when the agent starts in state $s$ and follows $\pi$. This quantity is called the value function.
+
+$$
+v_\pi(s) = \mathbb{E}_\pi[G_t \mid S_t = s]
+$$
+
+You already use something like a value function intuitively. Imagine playing chess. There is no immediate reward after every move, but at some point you can look at the board and know that your position is probably lost. You might even resign before checkmate because you can predict the future from the current state. That prediction is the value of the state: how good this position is expected to be if you keep playing from here.
+
+## Bellman Expectation Equation
+
+The definition of $v_\pi(s)$ tells us what the value function means, but it is not yet very useful for computation. It asks for the expected return over the whole future. To make it practical, we substitute the recursive form of $G_t$ into this expectation, separating the immediate reward from the expected value of the continuation.
 
 $$
 \begin{aligned}
-v_\pi(s) &= \mathbb{E_\pi}[G_t \mid S_t = s] \qquad \text{(recursive definition of } G_t \text{)}  \\\\\[0.5em]
-&= \mathbb{E_\pi}[R_t + \gamma G_{t+1} \mid S_t = s] \qquad \text{(linearity of expectation)} \\\\\[0.5em]
-&= \mathbb{E_\pi}[R_t \mid S_t = s] + \gamma \mathbb{E_\pi}[G_{t+1} \mid S_t = s] \qquad \text{(law of total expectation)} \\\\\[0.5em]
-&= \mathbb{E_\pi}[R_t \mid S_t = s] + \gamma \sum_{s^\prime} p(s^\prime \mid s)\mathbb{E_\pi}[G_{t+1} \mid S_t = s,S_{t+1} = s^\prime] \qquad \text{(conditional independence)} \\\\\[0.5em]
-&= \mathbb{E_\pi}[R_t \mid S_t = s] + \gamma \sum_{s^\prime} p(s^\prime \mid s)\mathbb{E_\pi}[G_{t+1} \mid S_{t+1} = s^\prime] \qquad \text{(definition of } v_\pi \text{)} \\\\\[0.5em]
-&= \mathbb{E_\pi}[R_t \mid S_t = s] + \gamma \sum_{s^\prime} p(s^\prime \mid s) v_\pi(s^\prime) \qquad \text{(marginalization)} \\\\\[0.5em]
-&= \mathbb{E_\pi}[R_t \mid S_t = s] + \gamma \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) v_\pi(s^\prime) \qquad \text{(definition of } \mathbb{E_\pi} \text{)} \\\\\[0.5em]
-&= \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) r + \gamma \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) v_\pi(s^\prime) \\\\\[0.5em]
-&= \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) (r + \gamma v_\pi(s^\prime)) \qquad \text{(probability chain rule)}  \\\\\[0.5em]
-&= \sum_{a}p (a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_\pi(s^\prime)) \\\\\[0.5em]
-&= \sum_{a}\pi (a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_\pi(s^\prime)) \\\\\[0.5em]
+v_\pi(s) &= \mathbb{E}_\pi[G_t \mid S_t = s] && {\scriptsize\text{(definition of } v_\pi \text{)}} \\[0.5em]
+&= \mathbb{E}_\pi[R_t + \gamma G_{t+1} \mid S_t = s] && {\scriptsize\text{(recursive definition of } G_t \text{)}} \\[0.5em]
+&= \mathbb{E}_\pi[R_t \mid S_t = s] + \gamma \mathbb{E}_\pi[G_{t+1} \mid S_t = s] && {\scriptsize\text{(linearity of expectation)}} \\[0.5em]
+&= \mathbb{E}_\pi[R_t \mid S_t = s] + \gamma \sum_{s^\prime} p(s^\prime \mid s)\mathbb{E}_\pi[G_{t+1} \mid S_t = s,S_{t+1} = s^\prime] && {\scriptsize\text{(law of total expectation)}} \\[0.5em]
+&= \mathbb{E}_\pi[R_t \mid S_t = s] + \gamma \sum_{s^\prime} p(s^\prime \mid s)\mathbb{E}_\pi[G_{t+1} \mid S_{t+1} = s^\prime] && {\scriptsize\text{(Markov assumption)}} \\[0.5em]
+&= \mathbb{E}_\pi[R_t \mid S_t = s] + \gamma \sum_{s^\prime} p(s^\prime \mid s) v_\pi(s^\prime) && {\scriptsize\text{(definition of } v_\pi \text{)}} \\[0.5em]
+&= \mathbb{E}_\pi[R_t \mid S_t = s] + \gamma \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) v_\pi(s^\prime) && {\scriptsize\text{(marginalization)}} \\[0.5em]
+&= \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) r + \gamma \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) v_\pi(s^\prime) && {\scriptsize\text{(definition of } \mathbb{E}_\pi \text{)}} \\[0.5em]
+&= \sum_{r, a, s^\prime} p(r, a, s^\prime \mid s) (r + \gamma v_\pi(s^\prime)) && {\scriptsize\text{(probability chain rule)}}  \\[0.5em]
+&= \sum_{a}p (a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_\pi(s^\prime)) \\[0.5em]
+&= \sum_{a}\pi (a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_\pi(s^\prime)) \\[0.5em]
 \end{aligned}
 $$
 
-A bit of math, but the takeaway is that we can express $v_\pi(s)$ as a function of itself i.e. $v_\pi(s^\prime)$, making it a recursive definition. We will see why it is useful once we derive the Value Iteration and Policy Iteration algorithms.
-Because $v(s)$ depends on the policy $\pi(a \mid s)$, we often write $v_\pi(s).$ 
-
-
-## Action-value function
-We defined the value function $v_\pi(s)$ as the expected discounted cumulative reward in state $s$. We can introduce an additional useful function $q_\pi(s, a)$ called the action-value function. 
-The action-value function represents the expected discounted cumulative reward if an agent in state $s$ takes an action $a$ and keeps following policy $\pi$ until the episode ends.
-We introduce it for mathematical convenience and ease of communication as it will appear in many equations.
+So the final form is:
 
 $$
-q_\pi(s, a) = \mathbb{E_\pi}[G_t \mid S_t = s, A_t = a] = \sum_{r, s^\prime} p(r, s^\prime \mid s, a)(r + \gamma v_\pi(s^\prime))
+v_\pi(s) = \sum_{a}\pi(a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_\pi(s^\prime))
 $$
 
-We no longer need to sum over all actions $a$ since we condition our probability distribution on action $a$.
-Having defined the action-value function, we can use it to express the value function.
+This is the Bellman expectation equation. It says that the value of state $s$ under policy $\pi$ is the expected immediate reward plus the discounted value of the next state. The expectation averages over both sources of randomness: the action chosen by the policy and the next state and reward produced by the environment.
+
+The subscript in $v_\pi(s)$ matters. If we change the policy, the action probabilities $\pi(a \mid s)$ change, and the value of the same state can change as well. This is why the Bellman expectation equation is used for policy evaluation: it tells us how good each state is for a fixed policy.
+
+## Action-value Function
+
+The value function answers a state question: if the agent is in state $s$ and follows policy $\pi$, what return should we expect? For policy improvement, we often need a more specific question: if the agent is in state $s$, takes action $a$ first, and then follows $\pi$, what return should we expect?
+
+This is the action-value function $q_\pi(s, a)$:
+
+$$
+q_\pi(s, a) = \mathbb{E}_\pi[G_t \mid S_t = s, A_t = a] = \sum_{r, s^\prime} p(r, s^\prime \mid s, a)(r + \gamma v_\pi(s^\prime))
+$$
+
+Because $q_\pi(s, a)$ already conditions on the first action, we no longer average over actions inside its definition. If we want the value of the state again, we can average the action-values using the policy:
 
 $$
 v_\pi(s) =  \sum_{a}\pi(a \mid s) q_\pi(s, a)
 $$
 
-## Bellman Expectation Equation
-
-A derived equation in the value function section is also known as the Bellman Expectation Equation. It is called "Expectation" because we sum over all actions which is equivalent to taking the expected value over the action-value function as you can see below.
-
-$$
-v_\pi(s) = \sum_{a} \pi(a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_\pi(s^\prime)) = \mathbb{E}_{a \sim \pi(\cdot \mid s)}[ q _{\pi} (s, a)  ]
-$$
+The action-value function is useful because it lets us compare actions in the same state. This comparison is exactly what we need when we move from evaluating a fixed policy to improving it.
 
 ## Bellman Optimality Equation
 
-There is also the variant of the Bellman Expectation Equation known as the Bellman Optimality Equation where instead of taking expectation over all actions we act greedily and always take an action that maximizes the value function. We will see why it is useful later in this post.
+The Bellman expectation equation evaluates a fixed policy. But the final goal is not just to evaluate one policy. We want the best policy.
+
+If we know the action-value of each possible action, then the best policy should choose an action with the highest action-value. This replaces the policy average with a maximum over actions. The result is the Bellman optimality equation:
 
 $$
-v(s) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime)) = \max_{a} q  (s, a) \\\\\[0.5em]
+v^*(s) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v^*(s^\prime)) = \max_{a} q^*(s, a)
 $$
 
-Unlike the Bellman Expectation Equation, notice that our value function $v(s)$ doesn't depend on the policy $\pi$, hence we used $v(s)$ instead of $v_\pi(s)$ on purpose.
-This observation is a foundation of the off-policy algorithms in reinforcement learning (e.g. Q-Learning) as you will learn later.
+Here $q^*(s, a)$ is the action-value when the agent takes action $a$ first and behaves optimally afterward.
+
+Unlike $v_\pi(s)$, the optimal value function $v^*(s)$ does not describe one fixed policy. It describes the best achievable expected return from each state. Once we know $v^*(s)$, we can recover an optimal policy by choosing an action with the highest $q^*(s, a)$ in each state.
+
+At this point, we have equations that characterize the value functions we want. The Bellman expectation equation characterizes $v_\pi(s)$ for a fixed policy, and the Bellman optimality equation characterizes $v^*(s)$ for the best policy. But an equation is not yet an algorithm. To find these value functions in practice, we need a procedure that starts with a rough guess, updates it repeatedly, and eventually converges to the right answer.
+
+This is where contraction mapping enters the story.
 
 # Contraction Mapping
 
-You might wonder why we introduced the Bellman Expectation Equation and the Bellman Optimality Equation in the first place. 
-It will become obvious once we switch our focus a bit from reinforcement learning and understand contraction mapping first.
-This part of math will be useful to derive algorithms to find the optimal policy.
+Contraction mapping is not specific to reinforcement learning. It is a general idea from metric spaces, where we study points, distances between points, and functions that move points around. The definition and theorem below show one important result: if a function always moves points closer together, then repeatedly applying that function converges to a unique fixed point.
 
+This sounds abstract, but it will become useful because the Bellman equations are recursive. Later, we will treat the right-hand side of a Bellman equation as a function that updates a value function. Contraction mapping gives us the language to explain why applying that update repeatedly can converge, which is exactly what we need for Value Iteration and Policy Iteration.
 
 ## Definition
-A contraction mapping is a function $T: X \rightarrow X$ that maps a metric space $X$ onto itself with the property that the distance $d$ between any two points $x$ and $y$ in the space is reduced after applying the function $T$.
-Such a reduction in distance we can express with a constant $0 \leq \kappa < 1$ such that:
+
+A contraction mapping is a function $T: X \rightarrow X$ on a metric space $X$. It takes a point from $X$ and returns another point in the same space. It is called a contraction if applying $T$ always brings points closer together.
+
+More formally, there must be a constant $0 \leq \kappa < 1$ such that for any two points $x$ and $y$:
 
 $$d(T(x), T(y)) \leq \kappa \cdot d(x, y)$$
 
-In other words, applying the function $T$ brings points closer together by at least a factor of $\kappa$.
+In other words, after applying $T$, the distance between two points is at most $\kappa$ times the original distance.
 
 ## Banach Fixed-Point Theorem
 
-The Banach Fixed-Point Theorem states that if $T$ is a contraction mapping then:
+The Banach Fixed-Point Theorem gives us the guarantee that makes contraction mappings useful. If $T$ is a contraction mapping, then:
 
-1. $T$ has a unique fixed point $x^*$ such that $T(x^ *) = x^ *$.
-2. For any initial point $x_0$ in the space, the sequence $x_0, T(x_0), T(T(x_0)), \ldots$ converges to that fixed point  $x^*$.
+1. $T$ has a unique fixed point $x^*$ such that $T(x^*) = x^*$.
+2. For any initial point $x_0$ in the space, the sequence $x_0, T(x_0), T(T(x_0)), \ldots$ converges to that fixed point $x^*$.
 
-In other words, if we keep applying the function $T$ starting with some initial point $x_0$ it will converge to the point $x^*$. 
-
+Algorithmically, this means: if an update rule is a contraction, then repeatedly applying it is guaranteed to converge to one solution.
 
 ## Applications in RL
 
-Now you probably wonder why is it useful in reinforcement learning? 
-Imagine for a second that any point $x$, $y$, $\ldots$ in the metric space is a function, not a real number as you are probably used to think at school.
-The takeaway from the Banach Fixed-Point Theorem is that if we found a function $T$ that is a contraction mapping, then we would have an iterative algorithm to find the true function $x$, beginning from any function $x_0$. 
+Now we can connect this abstract theorem back to reinforcement learning.
 
-Well, it seems like there is a proof that the Bellman Expectation Equation and the Bellman Optimality Equations are contraction mappings!
-Notice that we couldn't even think about proving such a fact without the Bellman Equations, because the recursive formulation of these equations allows us to use it as an operator $T$ as it maps a metric space onto itself $T: X \rightarrow X$.
+The Bellman equations are recursive: the value of the current state is written using the values of possible next states. For example $v_\pi(s)$ depends on $v_\pi(s^\prime)$. This means the same unknown function appears on both sides of the equation.
 
-For the Bellman Expectation Equation, the operator $T^\pi$ is defined as:
+That recursive form is exactly what lets us turn a Bellman equation into an update rule. Instead of already knowing the true value function, we start with some current guess $v$. Then we plug that guess into the right-hand side of the Bellman equation and get an updated guess. This update rule is the operator $T$ from the fixed-point theorem.
 
-$$T^\pi (v(s)) = \sum_{a} \pi(a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_\pi(s^\prime))$$
+For a fixed policy $\pi$, the Bellman expectation operator is:
 
-For the Bellman Optimality Equation, the operator $T^*$ is defined as:
+$$T^\pi v(s) = \sum_{a} \pi(a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))$$
 
-$$T^* (v(s)) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))$$
+For the optimal value function, the Bellman optimality operator is:
 
-Both of these operators directly lead to two common algorithms. The contraction property ensures that:
-1. In Value Iteration, repeatedly applying $T^*$ will converge to the optimal value function $v^ *$
-2. In Policy Iteration, repeatedly applying $T^\pi$ for a fixed policy $\pi$ will converge to the value function $v_\pi$ for that policy
+$$T^* v(s) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))$$
 
-This mathematical foundation is why we can be confident that these iterative algorithms will eventually find the solutions we're looking for.
+A key result, which we will use without proving here, is that both Bellman operators are contraction mappings when $0 \leq \gamma < 1$. So Banach's theorem tells us that repeated Bellman updates converge to a unique fixed point.
+
+For the Bellman expectation operator $T^\pi$, the fixed point is $v_\pi$, the value function for policy $\pi$. For the Bellman optimality operator $T^*$, the fixed point is $v^*$, the optimal value function.
+
+This is the bridge from equations to algorithms. The Bellman equations define the fixed points, and contraction mapping explains why repeated updates can find them. In the next section, we will turn these two update rules into Value Iteration and Policy Iteration.
 
 # Algorithms
 
-Below you can find two common algorithms that allow us to find the optimal policy $\pi^*(s)$.
+We now have the ingredients for two common algorithms. The Bellman optimality operator gives us a way to update values toward $v^*(s)$ directly. The Bellman expectation operator gives us a way to evaluate a fixed policy $\pi$. Both ideas can be used to find an optimal policy, but they organize the work differently.
 
 ## Value Iteration
 
-As we've seen, the Bellman Optimality Equation is a contraction mapping. This means we can apply it iteratively to compute the optimal value function $v^* (s)$.
+Value Iteration uses the Bellman optimality operator directly. The algorithm is:
 
-1. Iteratively apply the Bellman Optimality Equation for a value function until it converges to the optimal value function $v^*(s)$.
-$$
-v(s) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))
-$$
-How do we know when convergence happens? We need to observe both $v_t(s)$ and $v_{t+1}(s)$ until they stop changing by a small predefined value $\epsilon$.
+1. Start with some initial value function $v_0(s)$, which can be a rough guess.
+2. Repeatedly apply the Bellman optimality update:
 
-2. Once we computed the optimal value function $v^* (s)$, we can extract the corresponding optimal action-value function $q^* (s, a)$ and the optimal policy $\pi^* (s)$ in a single step, using the equations we already know.
-$$
-q^* (s, a) = \sum_{r, s^\prime} p(r, s^\prime \mid s, a)(r + \gamma v^* (s^\prime)) \\\\[0.5em]
-\pi^* (s) = \argmax_{a}{q^*(s, a)}
-$$
-We can extract the optimal policy $\pi^ * (s)$ because the optimal policy is the one that maximizes the value function for each state $s$.
+   $$
+   v_{k+1}(s) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_k(s^\prime))
+   $$
 
-What is interesting about the Value Iteration algorithm is that we never update a policy during the algorithm. 
-We only update  our value function $v(s)$. Any intermediate value function $v(s)$ that is not optimal might not correspond to any reasonable policy $\pi(s)$.
+   Because this update is a contraction when $0 \leq \gamma < 1$, repeated updates converge to the optimal value function $v^*(s)$.
 
+3. Stop when the value function changes only slightly between two iterations, for example when:
+
+   $$
+   \max_s |v_{k+1}(s) - v_k(s)| \leq \epsilon
+   $$
+
+4. Once the values have converged, extract a policy greedily. First compute the optimal action-value:
+
+   $$
+   q^*(s, a) = \sum_{r, s^\prime} p(r, s^\prime \mid s, a)(r + \gamma v^*(s^\prime))
+   $$
+
+   Then choose an action with the highest action-value in each state:
+
+   $$
+   \pi^*(s) = \argmax_{a} q^*(s, a)
+   $$
+
+The important detail is that Value Iteration does not maintain or evaluate a separate policy during the updates. The intermediate function $v_k(s)$ is only a working value estimate. A greedy policy can be extracted from it at any time, but the clean guarantee comes after the values converge to $v^*(s)$.
 
 ## Policy Iteration
 
-As we've established, the Bellman Expectation Equation is a contraction mapping. This allows us to apply it recursively to compute the value function $v_\pi(s)$ for our policy $\pi(s)$. 
+Policy Iteration takes a different route. Instead of updating values directly toward $v^*(s)$, it keeps an explicit policy and improves it step by step. Each iteration has two parts:
 
-What we compute in Policy Iteration is not an optimal value function $v^* (s)$ as in the Value Iteration algorithm, but a value function $v_\pi(s)$ that corresponds to a policy $\pi(s)$. 
-Now having computed $v_\pi (s)$ given policy $\pi$, how do we find the optimal policy? We will use the Policy Improvement Theorem.
+1. Policy evaluation: compute $v_\pi(s)$ for the current policy $\pi$.
+2. Policy improvement: update the policy so it chooses better actions according to the current value estimates.
 
-### Policy Improvement Theorem
+### Policy Evaluation
 
-The theorem states that acting greedily with respect to $q_\pi(s, a)$ i.e. extracting our new policy $\pi^\prime(s) = \argmax_a q_\pi(s, a)$ improves or doesn't change our current policy $\pi(s)$.
-It is true because of the following inequality as the $\max_a$ function will always be equal to or higher than a weighted average of $q_\pi(s, a)$.
+The evaluation step uses the Bellman expectation update:
 
-$$
-v_\pi(s) = \sum_a \pi(a \mid s) q_\pi(s, a) \leq \max_a q_\pi(s, a) = v_{\pi^\prime}(s)
-$$
-
-Improving a policy means that our value function is better for every state $s$. In other words, we can expect a higher cumulative discounted reward as $v_\pi(s) \leq v_{\pi^\prime}(s)$.
-
-
-### Algorithm
-
-1. Iteratively apply the Bellman Expectation Equation for a value function until it converges to the value function $v_\pi (s)$ for policy $\pi$.
 $$
 v_\pi(s) = \sum_{a} \pi(a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v_{\pi}(s^\prime))
 $$
 
-2. Update the policy $\pi(s)$ by acting greedily with respect to $q_\pi(s, a)$ to obtain a new policy $\pi^*$.
-$$\pi^\prime(s) = \argmax_a q_\pi(s, a)$$
+After evaluation, we know how good the current policy is. The next question is how to improve it.
 
-3. Repeat until the policy stops changing for each state $s$ i.e. $\|\pi_{t+1}(s) - \pi_{t}(s)\| \leq \epsilon $.
+### Policy Improvement Theorem
+
+First, we need to define what it means for one policy to be better than another. We say that $\pi^\prime$ is better than or equal to $\pi$ if it has value at least as high in every state:
+
+$$
+v_{\pi^\prime}(s) \geq v_\pi(s) \quad \text{for every state } s
+$$
+
+This means that from any starting state, $\pi^\prime$ gives us an expected discounted cumulative reward that is no worse than $\pi$.
+
+The Policy Improvement Theorem says that if we act greedily with respect to $q_\pi(s, a)$, the new policy satisfies this condition. In other words, after evaluating $\pi$, we can improve it by choosing the action that looks best under $q_\pi$:
+
+$$
+\pi^\prime(s) = \argmax_{a} q_\pi(s, a)
+$$
+
+### Proof Sketch
+
+Why is this greedy update guaranteed to improve the policy?
+
+Under the old policy $\pi$, the value of state $s$ is an average of the action-values $q_\pi(s, a)$. The greedy policy $\pi^\prime$ chooses the action with the largest action-value, so:
+
+$$
+v_\pi(s) = \sum_a \pi(a \mid s) q_\pi(s, a) \leq \max_a q_\pi(s, a)
+$$
+
+Because $\pi^\prime$ is greedy, this means:
+
+$$
+v_\pi(s) \leq q_\pi(s, \pi^\prime(s))
+$$
+
+For readability, shift the time index to start at zero. So the condition $S_t = s$ from the value-function definition becomes $S_0 = s$, and we write the realized starting state as $s_0 = s$ inside the rollout. The inequality we will unroll is:
+
+$$
+v_\pi(s_0) \leq q_\pi(s_0, \pi^\prime(s_0))
+$$
+
+Now expand the right-hand side using the definition of $q_\pi$:
+
+$$
+q_\pi(s_0, \pi^\prime(s_0)) = \sum_{r_0, s_1} p(r_0, s_1 \mid s_0, \pi^\prime(s_0))(r_0 + \gamma v_\pi(s_1))
+$$
+
+So:
+
+$$
+v_\pi(s_0) \leq \sum_{r_0, s_1} p(r_0, s_1 \mid s_0, \pi^\prime(s_0))(r_0 + \gamma v_\pi(s_1))
+$$
+
+The continuation term is still $v_\pi$, not $v_{\pi^\prime}$, because $q_\pi(s, a)$ means: take action $a$ first, then follow the old policy $\pi$. To unroll this expression once more, first write the same greedy bound for the possible next state $s_1$:
+
+$$
+v_\pi(s_1) = \sum_a \pi(a \mid s_1) q_\pi(s_1, a) \leq q_\pi(s_1, \pi^\prime(s_1))
+$$
+
+Then expand that $q_\pi$ term as well:
+
+$$
+q_\pi(s_1, \pi^\prime(s_1)) = \sum_{r_1, s_2} p(r_1, s_2 \mid s_1, \pi^\prime(s_1))(r_1 + \gamma v_\pi(s_2))
+$$
+
+Now we can replace $v_\pi(s_1)$ by this upper bound inside the previous sum. This is not substitution by equality: it is valid here because $\gamma \geq 0$, so replacing $v_\pi(s_1)$ with a larger quantity can only make the right-hand side larger.
+
+$$
+\begin{aligned}
+v_\pi(s_0)
+&\leq \sum_{r_0, s_1} p(r_0, s_1 \mid s_0, \pi^\prime(s_0))
+\left(r_0 + \gamma \sum_{r_1, s_2} p(r_1, s_2 \mid s_1, \pi^\prime(s_1))(r_1 + \gamma v_\pi(s_2))\right) \\
+&= \sum_{r_0, s_1, r_1, s_2} p(r_0, s_1 \mid s_0, \pi^\prime(s_0))p(r_1, s_2 \mid s_1, \pi^\prime(s_1))
+(r_0 + \gamma r_1 + \gamma^2 v_\pi(s_2)) \\
+&= \sum_{r_0, s_1, r_1, s_2} p(r_0, s_1, r_1, s_2 \mid s_0, \pi^\prime(s_0), \pi^\prime(s_1))
+(r_0 + \gamma r_1 + \gamma^2 v_\pi(s_2))
+\end{aligned}
+$$
+
+In the second line, we use marginalization to combine terms into one sum: the $r_0$ term can also be summed over $r_1, s_2$ because $\sum_{r_1, s_2} p(r_1, s_2 \mid s_1, \pi^\prime(s_1)) = 1$.
+
+In the last line, $p(r_0, s_1, r_1, s_2 \mid s_0, \pi^\prime(s_0), \pi^\prime(s_1))$ is the joint distribution of the two-step rollout when the first two actions are chosen by $\pi^\prime$. This does not assume ordinary independence between the two transitions. The probability chain rule gives a product of conditional probabilities:
+
+$$
+p(r_0, s_1, r_1, s_2 \mid s_0, \pi^\prime(s_0), \pi^\prime(s_1))
+= p(r_0, s_1 \mid s_0, \pi^\prime(s_0))
+p(r_1, s_2 \mid s_0, r_0, s_1, \pi^\prime(s_0), \pi^\prime(s_1))
+$$
+
+Then the Markov property lets us drop the earlier history from the second factor:
+
+$$
+p(r_1, s_2 \mid s_0, r_0, s_1, \pi^\prime(s_0), \pi^\prime(s_1))
+= p(r_1, s_2 \mid s_1, \pi^\prime(s_1))
+$$
+
+The sum with the joint rollout probability is therefore expectation notation written out. Once we know $S_0 = s$ and the policy being followed, the Markov property gives the rollout distribution, so the two-step bound becomes:
+
+$$
+v_\pi(s) \leq \mathbb{E}\left[R_0 + \gamma R_1 + \gamma^2 v_\pi(S_2) \mid S_0 = s,\ \text{follow } \pi^\prime \text{ for two steps, then } \pi\right]
+$$
+
+If we repeat the same substitution $n$ times, we get:
+
+$$
+v_\pi(s) \leq \mathbb{E}\left[\sum_{k=0}^{n-1} \gamma^k R_k + \gamma^n v_\pi(S_n) \mid S_0 = s,\ \text{follow } \pi^\prime \text{ for } n \text{ steps, then } \pi\right]
+$$
+
+The old policy $\pi$ appears only in the tail term $v_\pi(S_n)$, which says what happens after the first $n$ greedy steps. As $n \rightarrow \infty$, the discounted tail $\gamma^n v_\pi(S_n)$ goes to zero when rewards are bounded and $0 \leq \gamma < 1$, so what remains is the expected return from following the new policy $\pi^\prime$ from state $s$:
+
+$$
+\mathbb{E}_{\pi^\prime}\left[\sum_{k=0}^{\infty} \gamma^k R_k \mid S_0 = s\right]
+= \mathbb{E}_{\pi^\prime}[G_0 \mid S_0 = s]
+= v_{\pi^\prime}(s)
+$$
+
+Therefore:
+
+$$
+v_\pi(s) \leq v_{\pi^\prime}(s)
+$$
+
+### Algorithm
+
+After the proof, the actual algorithm is much simpler: it is just the thing software engineers like most, a loop. Putting the pieces together, Policy Iteration works as follows:
+
+1. Start with any policy $\pi$.
+2. Evaluate the policy by computing $v_\pi(s)$.
+3. Improve the policy by acting greedily with respect to $q_\pi(s, a)$:
+
+   $$\pi^\prime(s) = \argmax_{a} q_\pi(s, a)$$
+
+4. If the policy no longer changes, stop. Otherwise, set $\pi \leftarrow \pi^\prime$ and repeat.
+
+Policy Iteration is therefore an explicit loop between evaluation and improvement. Evaluation asks how good is the current policy. Improvement asks if we can choose better actions using what we just learned.
+
+## Generalized Policy Iteration
+
+Value Iteration and Policy Iteration look different, but they share the same structure. Both combine two ideas:
+
+1. Policy evaluation: estimate how good the current policy is, usually by estimating $v_\pi(s)$ or $q_\pi(s, a)$.
+2. Policy improvement: change the policy so it acts greedily, or more greedily, with respect to the current value estimates.
+
+This shared structure is called Generalized Policy Iteration (GPI).
+
+The important word is generalized. GPI describes the interaction between evaluation and improvement, but it does not prescribe the schedule. It does not say how long we must evaluate a policy, whether we should update all states or only some states, or in what order states should be updated.
+
+Policy Iteration keeps an explicit policy. We evaluate that policy for some amount of time, improve it greedily, and repeat. Classical Policy Iteration evaluates the policy all the way to convergence before improving it. Modified Policy Iteration evaluates it only for a few sweeps.
+
+Value Iteration does not keep an explicit policy during the value updates. It repeatedly applies the recursive optimality update for a long time, and once the values are good enough, it extracts a greedy policy. In that sense, the greedy improvement step is built into the value update, and the explicit policy extraction can happen at the end.
+
+This is why GPI is a useful umbrella concept. The important part is not one specific schedule, but the interaction between estimating values and improving the policy.
 
 # Example
 
-Let's play a game. We are given a grid world in which each cell represents a state $s$. 
-We can take 4 actions (up, down, left, right). We win the game when we obtain a gift in the shortest time possible while avoiding falling down.
-We can model the shortest possible time as assigning $-1$ rewards with each timestep. 
+Let's ground the algorithms in a small grid-world game. Each cell is a state $s$, and from each non-terminal state the agent can choose one of four actions: up, down, left, or right.
+
+The goal is to reach the gift while avoiding holes. Stepping into a hole ends the episode with reward $-1$, reaching the gift ends it with reward $+1$, and every normal move gives a small negative reward. That small step penalty makes shorter successful paths better than longer successful paths.
+
+Because this is a model-based setting, we know the environment dynamics: for each state-action pair, we know where the agent can go next and what reward it can receive. That is exactly the information needed to compute the Bellman equations we derived earlier, estimate $V(s)$ and $Q(s, a)$, and improve the policy.
 
 ![Frozen Lake empty](frozen_lake_empty.png)
 
@@ -243,8 +446,7 @@ You can see an optimal policy on the image below:
 
 ![Frozen Lake policy](frozen_lake_policy.png)
 
-
 # Final thoughts
 
-In this article we discussed algorithms to learn the agent's behavior expressed as policy $\pi$ in model-based environments. A model-based environment means that we have direct access to the environment's dynamics i.e. $p(r, s^\prime \mid s, a)$ probabilities. 
+In this article we discussed algorithms to learn the agent's behavior expressed as policy $\pi$ in model-based environments. A model-based environment means that we have direct access to the environment's dynamics i.e. $p(r, s^\prime \mid s, a)$ probabilities.
 As you can tell, it is rarely the case in the real world. In the next article we will discuss model-free environments which is a situation when you can rely only on data collected by interacting with environment.
