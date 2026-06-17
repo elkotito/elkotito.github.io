@@ -1,6 +1,6 @@
 ---
-title: "Reinforcement Learning 101"
-description: "Introduction to classical model-based Reinforcement Learning techniques."
+title: "Reinforcement Learning 101: Policy Iteration and Value Iteration"
+description: "Model-based Reinforcement Learning from first principles: MDPs, value functions, Bellman equations, and contraction mapping with full mathematical proofs of Policy Iteration and Value Iteration."
 date: 2026-06-17
 tags:
   [
@@ -16,7 +16,7 @@ tags:
 draft: false
 ---
 
-# Introduction
+## Introduction
 
 Reinforcement learning is about learning from consequences. Unlike supervised learning, nobody tells the agent the correct action for every situation. The agent tries actions, receives rewards, and slowly discovers which behavior leads to better long-term outcomes.
 
@@ -85,7 +85,7 @@ $$
 \mathbb{E}[G_t \mid S_t = s]
 $$
 
-# Bellman Equations
+## Bellman Equations
 
 In the introduction, we defined the discounted return as a sum of future rewards. To derive Bellman equations, we now use the same return in a recursive form: the return from today is the immediate reward plus the discounted return from the next time step.
 
@@ -95,7 +95,7 @@ $$
 
 This recursive form is the starting point for the Bellman equations. Once we define the value function as the expected return, we will substitute this recursive expression for $G_t$ into that expectation.
 
-## Value Function
+### Value Function
 
 The goal of reinforcement learning is to find an optimal policy $\pi^*(s)$ that maximizes the expected discounted cumulative reward for every state $s$. The star in $\pi^*$ means optimal.
 
@@ -107,7 +107,7 @@ $$
 
 You already use something like a value function intuitively. Imagine playing chess. There is no immediate reward after every move, but at some point you can look at the board and know that your position is probably lost. You might even resign before checkmate because you can predict the future from the current state. That prediction is the value of the state: how good this position is expected to be if you keep playing from here.
 
-## Bellman Expectation Equation
+### Bellman Expectation Equation
 
 The definition of $v_\pi(s)$ tells us what the value function means, but it is not yet very useful for computation. It asks for the expected return over the whole future. To make it practical, we substitute the recursive form of $G_t$ into this expectation, separating the immediate reward from the expected value of the continuation.
 
@@ -137,7 +137,7 @@ This is the Bellman expectation equation. It says that the value of state $s$ un
 
 The subscript in $v_\pi(s)$ matters. If we change the policy, the action probabilities $\pi(a \mid s)$ change, and the value of the same state can change as well. This is why the Bellman expectation equation is used for policy evaluation: it tells us how good each state is for a fixed policy.
 
-## Action-value Function
+### Action-value Function
 
 The value function answers a state question: if the agent is in state $s$ and follows policy $\pi$, what return should we expect? For policy improvement, we often need a more specific question: if the agent is in state $s$, takes action $a$ first, and then follows $\pi$, what return should we expect?
 
@@ -155,7 +155,7 @@ $$
 
 The action-value function is useful because it lets us compare actions in the same state. This comparison is exactly what we need when we move from evaluating a fixed policy to improving it.
 
-## Bellman Optimality Equation
+### Bellman Optimality Equation
 
 The Bellman expectation equation evaluates a fixed policy. But the final goal is not just to evaluate one policy. We want the best policy.
 
@@ -173,13 +173,13 @@ At this point, we have equations that characterize the value functions we want. 
 
 This is where contraction mapping enters the story.
 
-# Contraction Mapping
+## Contraction Mapping
 
 Contraction mapping is not specific to reinforcement learning. It is a general idea from metric spaces, where we study points, distances between points, and functions that move points around. The definition and theorem below show one important result: if a function always moves points closer together, then repeatedly applying that function converges to a unique fixed point.
 
 This sounds abstract, but it will become useful because the Bellman equations are recursive. Later, we will treat the right-hand side of a Bellman equation as a function that updates a value function. Contraction mapping gives us the language to explain why applying that update repeatedly can converge, which is exactly what we need for Value Iteration and Policy Iteration.
 
-## Definition
+### Definition
 
 A contraction mapping is a function $T: X \rightarrow X$ on a metric space $X$. It takes a point from $X$ and returns another point in the same space. It is called a contraction if applying $T$ always brings points closer together.
 
@@ -189,7 +189,7 @@ $$d(T(x), T(y)) \leq \kappa \cdot d(x, y)$$
 
 In other words, after applying $T$, the distance between two points is at most $\kappa$ times the original distance.
 
-## Banach Fixed-Point Theorem
+### Banach Fixed-Point Theorem
 
 The Banach Fixed-Point Theorem gives us the guarantee that makes contraction mappings useful. If $T$ is a contraction mapping, then:
 
@@ -198,7 +198,7 @@ The Banach Fixed-Point Theorem gives us the guarantee that makes contraction map
 
 Algorithmically, this means: if an update rule is a contraction, then repeatedly applying it is guaranteed to converge to one solution.
 
-## Applications in RL
+### Applications in RL
 
 Now we can connect this abstract theorem back to reinforcement learning.
 
@@ -220,11 +220,11 @@ For the Bellman expectation operator $T^\pi$, the fixed point is $v_\pi$, the va
 
 This is the bridge from equations to algorithms. The Bellman equations define the fixed points, and contraction mapping explains why repeated updates can find them. In the next section, we will turn these two update rules into Value Iteration and Policy Iteration.
 
-# Algorithms
+## Algorithms
 
 We now have the ingredients for two common algorithms. The Bellman optimality operator gives us a way to update values toward $v^*(s)$ directly. The Bellman expectation operator gives us a way to evaluate a fixed policy $\pi$. Both ideas can be used to find an optimal policy, but they organize the work differently.
 
-## Value Iteration
+### Value Iteration
 
 Value Iteration uses the Bellman optimality operator directly. The algorithm is:
 
@@ -257,14 +257,14 @@ Value Iteration uses the Bellman optimality operator directly. The algorithm is:
 
 The important detail is that Value Iteration does not maintain or evaluate a separate policy during the updates. The intermediate function $v_k(s)$ is only a working value estimate. A greedy policy can be extracted from it at any time, but the clean guarantee comes after the values converge to $v^*(s)$.
 
-## Policy Iteration
+### Policy Iteration
 
 Policy Iteration takes a different route. Instead of updating values directly toward $v^*(s)$, it keeps an explicit policy and improves it step by step. Each iteration has two parts:
 
 1. Policy evaluation: compute $v_\pi(s)$ for the current policy $\pi$.
 2. Policy improvement: update the policy so it chooses better actions according to the current value estimates.
 
-### Policy Evaluation
+#### Policy Evaluation
 
 The evaluation step uses the Bellman expectation update:
 
@@ -274,7 +274,7 @@ $$
 
 After evaluation, we know how good the current policy is. The next question is how to improve it.
 
-### Policy Improvement Theorem
+#### Policy Improvement Theorem
 
 First, we need to define what it means for one policy to be better than another. We say that $\pi^\prime$ is better than or equal to $\pi$ if it has value at least as high in every state:
 
@@ -290,7 +290,7 @@ $$
 \pi^\prime(s) = \argmax_{a} q_\pi(s, a)
 $$
 
-### Proof Sketch
+#### Proof Sketch
 
 Why is this greedy update guaranteed to improve the policy?
 
@@ -407,7 +407,7 @@ After the proof, the actual algorithm is much simpler: it is just the thing soft
 
 Policy Iteration is therefore an explicit loop between evaluation and improvement. Evaluation asks how good is the current policy. Improvement asks if we can choose better actions using what we just learned.
 
-## Generalized Policy Iteration
+### Generalized Policy Iteration
 
 Value Iteration and Policy Iteration look different, but they share the same structure. Both combine two ideas:
 
@@ -424,29 +424,28 @@ Value Iteration does not keep an explicit policy during the value updates. It re
 
 This is why GPI is a useful umbrella concept. The important part is not one specific schedule, but the interaction between estimating values and improving the policy.
 
-# Example
+## Frozen Lake Example
 
 Let's ground the algorithms in a small grid-world game. Each cell is a state $s$, and from each non-terminal state the agent can choose one of four actions: up, down, left, or right.
 
-The goal is to reach the gift while avoiding holes. Stepping into a hole ends the episode with reward $-1$, reaching the gift ends it with reward $+1$, and every normal move gives a small negative reward. That small step penalty makes shorter successful paths better than longer successful paths.
+The goal is to reach the gift while avoiding holes. Every step costs $-1$, and falling into a hole ends the episode. Since each move is penalized equally, the agent maximizes its total reward by reaching the gift as fast as possible - the shortest path is the optimal policy. This is also a clean example of how a classic shortest-path problem can be expressed in RL terms.
 
-Because this is a model-based setting, we know the environment dynamics: for each state-action pair, we know where the agent can go next and what reward it can receive. That is exactly the information needed to compute the Bellman equations we derived earlier, estimate $V(s)$ and $Q(s, a)$, and improve the policy.
+Because this is a model-based setting, we know the environment dynamics: for each state-action pair, we know the probability distribution over next states and rewards - $p(r, s^\prime \mid s, a)$. We don't know exactly where the agent will land, only how likely each outcome is. That is exactly the information needed to compute the Bellman equations we derived earlier, estimate $v(s)$ and $q(s, a)$, and improve the policy.
 
-![Frozen Lake empty](frozen_lake_empty.png)
+![Frozen Lake empty](frozen_lake_empty.webp)
 
-## Code
-
-You can find my naive implementation of these algorithms on my GitHub:
-
-https://github.com/elkotito/rl-tutorial/blob/main/model_based_algorithms.py
-
-## Policy
+### Optimal Policy
 
 You can see an optimal policy on the image below:
 
-![Frozen Lake policy](frozen_lake_policy.png)
+![Frozen Lake policy](frozen_lake_policy.webp)
 
-# Final thoughts
+### Exercise
 
-In this article we discussed algorithms to learn the agent's behavior expressed as policy $\pi$ in model-based environments. A model-based environment means that we have direct access to the environment's dynamics i.e. $p(r, s^\prime \mid s, a)$ probabilities.
-As you can tell, it is rarely the case in the real world. In the next article we will discuss model-free environments which is a situation when you can rely only on data collected by interacting with environment.
+Want to test your understanding? I prepared an exercise for this lesson in my [Reinforcement Learning Course](https://github.com/elkotito/reinforcement-learning-course/blob/main/lesson1/) - there's a task to implement yourself along with an example solution.
+
+## Final thoughts
+
+In this article we covered how a model-based agent can learn an optimal policy using Policy Iteration and Value Iteration - both grounded in the Bellman equations. The key assumption was that we have full access to the environment dynamics $p(r, s^\prime \mid s, a)$, which made it possible to solve for $v(s)$ and $q(s, a)$ directly.
+
+In the real world, that assumption rarely holds. In the next article we will move to model-free environments, where the agent has no access to transition probabilities and must instead learn purely from experience. We will look at Q-learning and SARSA — two foundational algorithms that make this possible.

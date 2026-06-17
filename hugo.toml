@@ -7,6 +7,7 @@ canonifyURLs = true
 enableRobotsTXT = true
 
 [params]
+env = "production"
 defaultTheme = "light"
 author = "Mateusz Pieniak"
 ShowReadingTime = true
@@ -17,13 +18,18 @@ ShowToc = true
 TocOpen = true
 fuse = true
 math = true
-homeInfoParams = { Title = "Cześć 👋", Content = "I'm Mateusz and I learn in public so AI can be better. Always one print statement away from clarity." }
+keywords = ["AI", "Machine Learning", "Software Engineering", "Reinforcement Learning", "Deep Learning", "Python"]
+homeInfoParams = { Title = "Mateusz Pieniak Blog — AI & Machine Learning", Content = "Technical notes on machine learning, reinforcement learning, deep learning, and AI engineering - from research ideas and mathematical intuition to working systems." }
 assets = { customCSS = ["css/extended/custom.css"] }
 socialIcons = [
     { name = "github", url = "https://github.com/elkotito" },
     { name = "linkedin", url = "https://linkedin.com/in/mateusz-pieniak/" },
+    { name = "x", url = "https://x.com/MateuszPieniak" },
     { name = "rss", url = "/index.xml"}
 ]
+
+[params.schema]
+publisherType = "Person"
 
 [menu]
 main = [
@@ -33,9 +39,15 @@ main = [
     { name = "RSS", url = "/index.xml", weight = 4 }
 ]
 
-
 [outputs]
 home = ["HTML", "RSS", "JSON"]
+
+[sitemap]
+changefreq = "weekly"
+priority = 0.5
+
+[services.googleAnalytics]
+ID = "HSMGQ2QCTC"
 
 [markup.goldmark.extensions.passthrough]
 enable = true
