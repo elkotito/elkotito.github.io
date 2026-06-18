@@ -5,6 +5,7 @@ date: 2026-06-17
 tags:
   [
     "Reinforcement Learning",
+    "Model-based Reinforcement Learning",
     "Bellman Optimality Equation",
     "Bellman Expectation Equation",
     "Banach Fixed-Point Theorem",
@@ -448,4 +449,4 @@ Want to test your understanding? I prepared an exercise for this lesson in my [R
 
 In this article we covered how a model-based agent can learn an optimal policy using Policy Iteration and Value Iteration - both grounded in the Bellman equations. The key assumption was that we have full access to the environment dynamics $p(r, s^\prime \mid s, a)$, which made it possible to solve for $v(s)$ and $q(s, a)$ directly.
 
-In the real world, that assumption rarely holds. In the next article we will move to model-free environments, where the agent has no access to transition probabilities and must instead learn purely from experience. We will look at Q-learning and SARSA — two foundational algorithms that make this possible.
+In the real world, that assumption rarely holds. In the next article we will move to model-free environments, where the agent has no access to transition probabilities and must instead learn purely from experience. We will look at Q-learning and SARSA - two foundational algorithms that make this possible.
