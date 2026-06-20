@@ -138,7 +138,7 @@ This is the Bellman expectation equation. It says that the value of state $s$ un
 
 The subscript in $v_\pi(s)$ matters. If we change the policy, the action probabilities $\pi(a \mid s)$ change, and the value of the same state can change as well. This is why the Bellman expectation equation is used for policy evaluation: it tells us how good each state is for a fixed policy.
 
-### Action-value Function
+### Action-Value Function
 
 The value function answers a state question: if the agent is in state $s$ and follows policy $\pi$, what return should we expect? For policy improvement, we often need a more specific question: if the agent is in state $s$, takes action $a$ first, and then follows $\pi$, what return should we expect?
 
