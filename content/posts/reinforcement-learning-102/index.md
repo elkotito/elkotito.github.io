@@ -543,23 +543,17 @@ Want to test your understanding? I prepared an exercise for this lesson in my [R
 
 ## Summary
 
-The cliff-walking example shows why the details in the update target matter. Monte Carlo Control, SARSA, Expected SARSA, and Q-learning all learn from sampled interaction, but they prefer different routes because they account for future experience in different ways: a full return, a sampled next action, an expected next action, or a greedy maximum.
-
-This brings us back to the main shift from the previous article. Value Iteration works cleanly in a model-based setting because the transition probabilities let us compute exact Bellman backups and compare actions before acting. In a model-free setting, the agent chooses one action, observes one outcome, and moves on. Exact expectations are replaced by samples collected from interaction.
-
-Monte Carlo learning uses complete returns from finished episodes. Temporal Difference learning updates after each step by bootstrapping from current estimates.
-
-For control, learning only $v(s)$ is a dead end when we do not know the transition model. We learn $q(s, a)$ so that actions can be selected directly with:
+The main shift in this lesson was from planning with a known model to learning from sampled interaction. When we do not know the transition probabilities, learning only $v(s)$ is not enough for control, because we cannot look ahead through the model to compare actions. Instead we learn $q(s, a)$, which lets us choose actions directly:
 
 $$
 \pi^\prime(s) = \argmax_a q(s, a)
 $$
 
-Generalized policy iteration describes the control loop: estimate action-values, improve the policy, and repeat without requiring either step to finish exactly. Monte Carlo Control does the evaluation part with complete returns. SARSA does it with a one-step TD target sampled from the same policy. Q-learning uses the Bellman optimality target and learns toward $q^*$.
+We also saw two broad ways to estimate action-values from data. Monte Carlo methods wait until an episode ends and use the complete return. Temporal Difference methods update after each step by bootstrapping from the estimates they already have. SARSA, Expected SARSA, and Q-learning are all TD control methods, but their targets differ: a sampled next action, an expected next action, or a greedy maximum. The cliff-walking example made that difference visible, since these targets lead to different preferred routes.
 
-Exploration is needed because, without environment dynamics, the agent can only learn from actions it actually tries. An $\epsilon$-greedy behavior policy keeps collecting useful samples while still exploiting what the agent already knows.
+Because the agent only learns from actions it actually tries, exploration is not optional. An $\epsilon$-greedy behavior policy keeps collecting useful samples while still exploiting what has already been learned.
 
-Once behavior can differ from the policy being learned, the on-policy/off-policy distinction matters. Basic SARSA is on-policy because its sampled next action must come from the policy being evaluated. Expected SARSA replaces that sampled next action with an expectation over the target policy, so it can be on-policy when behavior and target are the same, or off-policy when transitions come from a behavior policy but the expectation uses a different target policy. Q-learning is off-policy because it can behave exploratorily while learning a greedy target policy.
+Finally, we separated on-policy from off-policy learning. SARSA learns about the same policy it uses to act. Expected SARSA can be either on-policy or off-policy, depending on whether its expectation uses the behavior policy or a separate target policy. Q-learning is off-policy because it can explore during training while learning the greedy policy.
 
 ### Towards Deep Q-learning
 
@@ -569,4 +563,4 @@ $$
 q_\theta(s, a)
 $$
 
-Once we do that, the algorithm needs extra machinery. Neural networks are sensitive to correlated data, and Q-learning targets move as the network changes. This is where experience replay and target networks become important. We will cover those ideas in the next article when we move from tabular Q-learning to Deep Q-Networks.
+Once we do that, the algorithm needs extra machinery. Neural networks are sensitive to correlated data, and Q-learning targets move as the network changes. This is where experience replay and target networks become important. We will cover those ideas in the next article when we move from tabular Q-learning to Approximate methods.
