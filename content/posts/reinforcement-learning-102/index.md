@@ -1,7 +1,7 @@
 ---
 title: "Reinforcement Learning 102: Q-learning & SARSA"
 description: "Model-free RL: Monte Carlo and Temporal Difference control, Q-learning, SARSA, Expected SARSA, and exploration."
-date: 2026-06-17
+date: 2026-06-21
 tags:
   [
     "Reinforcement Learning",
