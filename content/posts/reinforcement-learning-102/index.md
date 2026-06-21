@@ -13,7 +13,7 @@ tags:
     "Expected SARSA",
     "Exploration",
   ]
-draft: true
+draft: false
 ---
 
 ## Introduction
