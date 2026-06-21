@@ -1,6 +1,6 @@
 ---
 title: "Reinforcement Learning 101: Policy Iteration and Value Iteration"
-description: "Model-based Reinforcement Learning from first principles: MDPs, value functions, Bellman equations, and contraction mapping with full mathematical proofs of Policy Iteration and Value Iteration."
+description: "Model-based RL: MDPs, value functions, action-value functions, Bellman equations, and contraction mapping with full mathematical proofs of Policy Iteration and Value Iteration."
 date: 2026-06-17
 tags:
   [
@@ -186,7 +186,9 @@ A contraction mapping is a function $T: X \rightarrow X$ on a metric space $X$. 
 
 More formally, there must be a constant $0 \leq \kappa < 1$ such that for any two points $x$ and $y$:
 
-$$d(T(x), T(y)) \leq \kappa \cdot d(x, y)$$
+$$
+d(T(x), T(y)) \leq \kappa \cdot d(x, y)
+$$
 
 In other words, after applying $T$, the distance between two points is at most $\kappa$ times the original distance.
 
@@ -209,11 +211,15 @@ That recursive form is exactly what lets us turn a Bellman equation into an upda
 
 For a fixed policy $\pi$, the Bellman expectation operator is:
 
-$$T^\pi v(s) = \sum_{a} \pi(a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))$$
+$$
+T^\pi v(s) = \sum_{a} \pi(a \mid s) \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))
+$$
 
 For the optimal value function, the Bellman optimality operator is:
 
-$$T^* v(s) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))$$
+$$
+T^* v(s) = \max_{a} \sum_{r, s^\prime} p(r, s^\prime \mid s, a) (r + \gamma v(s^\prime))
+$$
 
 A key result, which we will use without proving here, is that both Bellman operators are contraction mappings when $0 \leq \gamma < 1$. So Banach's theorem tells us that repeated Bellman updates converge to a unique fixed point.
 
@@ -402,7 +408,9 @@ After the proof, the actual algorithm is much simpler: it is just the thing soft
 2. Evaluate the policy by computing $v_\pi(s)$.
 3. Improve the policy by acting greedily with respect to $q_\pi(s, a)$:
 
-   $$\pi^\prime(s) = \argmax_{a} q_\pi(s, a)$$
+   $$
+   \pi^\prime(s) = \argmax_{a} q_\pi(s, a)
+   $$
 
 4. If the policy no longer changes, stop. Otherwise, set $\pi \leftarrow \pi^\prime$ and repeat.
 

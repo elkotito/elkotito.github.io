@@ -1,6 +1,6 @@
 ---
 title: "Reinforcement Learning 102: Q-learning & SARSA"
-description: "Model-free Reinforcement Learning from first principles: action-values, Monte Carlo and Temporal Difference control, Q-learning, SARSA, Expected SARSA, and exploration."
+description: "Model-free RL: Monte Carlo and Temporal Difference control, Q-learning, SARSA, Expected SARSA, and exploration."
 date: 2026-06-17
 tags:
   [
@@ -241,7 +241,7 @@ $$
 
 Here, weight means the fraction of the final $\lambda$-return assigned to that particular $n$-step return. It is not the same thing as the reward discount $\gamma$.
 
-![TD lambda weights for n-step returns](td_lambda_weights.svg)
+![TD lambda weights for n-step returns](td_lambda_weights.webp)
 
 The plot shows this weight as a function of $n$. In the algorithm, $n$ is an integer, but the smooth curves make the geometric decay easier to see.
 
@@ -337,7 +337,7 @@ A simple SARSA loop is:
 4. After the $q$ update, recompute the greedy action in each state, while keeping probability $\epsilon$ for random exploration.
 5. If the episode is not done, set $s \leftarrow s^\prime$, $a \leftarrow a^\prime$, and continue.
 
-The important detail is that $a^\prime$ is not arbitrary. The Bellman expectation equation for $q_\pi$ says that after reaching $s^\prime$, we continue with policy $\pi$. If we approximate that next-action expectation with one sampled action, then the sampled action has to come from $\pi(\cdot \mid s^\prime)$. This is the core reason SARSA is on-policy: the policy being evaluated must also generate the next sampled action. If $\pi$ is $\epsilon$-greedy, then the target includes that exploration, so SARSA learns the value of the policy it actually follows.
+The important detail is that $a^\prime$ is not arbitrary. The Bellman expectation equation for $q_\pi$ says that after reaching $s^\prime$, we continue with policy $\pi$. If we approximate that next-action expectation with one sampled action, then the sampled action has to come from $\pi(\cdot \mid s^\prime)$. This is the core reason SARSA is on-policy: the policy being evaluated must also generate the next sampled action. If $\pi$ is $\epsilon$-greedy, then the target includes that exploration, so SARSA learns the value of the policy it actually follows. We will talk more about off-policy vs. on-policy in the next section.
 
 ### Expected SARSA
 
@@ -365,7 +365,7 @@ $$
 r
 $$
 
-The difference is small but useful. SARSA asks which next action the policy happened to sample. Expected SARSA asks for the average value under all actions the policy might sample. That usually gives a lower-variance target. The cost is that we have to know the action probabilities $\pi(a^\prime \mid s^\prime)$ and sum over the available actions, which is cheap when the action set is small and discrete.
+The difference is small but useful. SARSA asks which next action the policy happened to sample. Expected SARSA asks for the average value under all actions the policy might sample. The cost is that we have to know the action probabilities $\pi(a^\prime \mid s^\prime)$ and sum over the available actions, which is cheap when the action set is small and discrete.
 
 A simple control loop is:
 
@@ -477,41 +477,75 @@ A simple Q-learning loop is:
 
 ## Cliff Walking Example
 
-Consider the standard Cliff Walking environment:
+Let's ground the algorithms in another small grid-world game. Each cell is a state $s$, and from each non-terminal state the agent can move up, down, left, or right.
 
-Here $S$ is the start, $G$ is the goal, $F$ is a normal floor cell, and $C$ is the cliff. The agent can move up, down, left, or right. Each normal step gives reward $-1$. Stepping into the cliff gives reward $-100$ and sends the agent back to the start. Reaching the goal ends the episode.
+The agent starts in the bottom-left cell and has to reach the goal in the bottom-right cell. The dark cells between them are the cliff. Every normal step gives reward $-1$. Stepping into the cliff gives reward $-100$ and sends the agent back to the start. Reaching the goal ends the episode.
 
-There are two important routes:
+![Cliff Walking empty](cliff_walking_empty.webp)
 
-- The shortest good route goes just above the cliff and then down into the goal.
-- A safer route goes higher above the cliff, so random mistakes are less likely to fall into it.
+This environment is useful because two routes are both reasonable, depending on what policy we are evaluating. The shortest route goes directly above the cliff. It reaches the goal quickly, but one exploratory move downward can be very expensive. A safer route goes one row higher. It takes a few extra steps, but it gives the behavior policy more room for mistakes: even if exploration makes the agent choose a random action, it is less likely to step straight into the cliff and receive the $-100$ penalty.
 
-Your exercise is to implement three agents for this environment: SARSA, Expected SARSA, and Q-learning. Use the same $\epsilon$-greedy behavior policy for all three. For SARSA and Expected SARSA in this exercise, use that same policy as the target policy too. Q-learning will still use a greedy target.
+The images below show the deterministic greedy policy extracted after training. They do not show the random exploratory moves taken during training. They show what each learned $q$ table would do if we acted greedily afterward.
 
-The main difference is the next-action part of the target:
+That detail matters. For Monte Carlo Control, SARSA, and Expected SARSA, the $q$ values were learned for an $\epsilon$-greedy policy. The final plot removes exploration by taking the best action in each state, but the values behind those arrows still include the cost of possible future exploratory moves. So the greedy path in the image does not have to be the shortest deterministic path.
 
-- SARSA samples one $a^\prime$ from the $\epsilon$-greedy policy and uses $r + \gamma q(s^\prime, a^\prime)$.
-- Expected SARSA averages over actions under the target policy and uses $r + \gamma \sum_{a^\prime} \pi(a^\prime \mid s^\prime)q(s^\prime, a^\prime)$. In this exercise, that target policy is the same $\epsilon$-greedy policy that collects data.
-- Q-learning takes the maximum and uses $r + \gamma \max_{a^\prime} q(s^\prime, a^\prime)$.
+### Monte Carlo Control
 
-For terminal next states, all three targets reduce to $r$.
+![Monte Carlo Control best path](solution_monte_carlo_control_deterministic_path.webp)
 
-The Q-learning target is also a useful way to see the connection to Expected SARSA. The maximum is the expectation under a greedy policy. If Expected SARSA put all of the policy's probability on the greedy action:
+Monte Carlo Control does find a route to the goal, but the greedy route in this plot is less direct.
+
+The main reason is that Monte Carlo Control updates from the full return of the episode. In Cliff Walking, falling into the cliff gives $-100$ and sends the agent back to the start, but it does not end the episode. So if an exploratory move hits the cliff later in the episode, that penalty and the recovery steps become part of the return for earlier state-action pairs too. With $\epsilon$-greedy episodes, those full returns can be noisy, and the learned action-values may make a safer-looking route appear best.
+
+This does not mean Monte Carlo is implemented incorrectly. It means that, in this environment and with this exploration setup, full-episode returns have high variance. The bootstrapping methods below use shorter targets, so they usually stabilize the path faster.
+
+### SARSA
+
+![SARSA](solution_sarsa_deterministic_path.webp)
+
+SARSA learns the most cautious route in this run: it goes to the top row first, then moves right. This matches the usual cliff-walking effect described by Sutton and Barto: SARSA is on-policy, so it learns action-values for the $\epsilon$-greedy policy that is actually used during training. Most of the time the agent follows the current best action, but with probability $\epsilon$ it takes a random action. Near the cliff, a random move down can cost $-100$.
+
+After reaching $s^\prime$, SARSA chooses the next action $a^\prime$ with the same $\epsilon$-greedy policy and uses that action in the update:
 
 $$
-\sum_{a^\prime} \pi(a^\prime \mid s^\prime)q(s^\prime, a^\prime)
-= \max_{a^\prime} q(s^\prime, a^\prime)
+r + \gamma q(s^\prime, a^\prime)
 $$
 
-its target would become the Q-learning target. In this exercise, Expected SARSA uses the exploratory $\epsilon$-greedy policy inside the expectation, so it is on-policy and evaluates the policy that may actually explore. If the behavior policy still collected exploratory transitions but the expectation used a different target policy, Expected SARSA would be off-policy.
+Imagine the agent is on the middle path and moves to a state $s^\prime$ closer to the cliff. From there, $\epsilon$-greedy can still sample the dangerous action down. After enough falls, $q(s^\prime,\text{down})$ becomes very low because that action leads to the $-100$ cliff penalty. If down is the sampled $a^\prime$, SARSA uses this low action-value in the target for the previous move. In other words, the low $q(s^\prime,a^\prime)$ helps update $q(s,a)$ for the middle-path move. So the middle-path move can look bad too.
 
-This example shows why the behavior-policy/target-policy distinction matters. Q-learning learns the value of the greedy target policy. That greedy policy tends to choose the shortest route just above the cliff. During training, the behavior policy may still make exploratory mistakes and fall, but the learned target is the path that would be good if the agent behaved greedily afterward.
+### Expected SARSA
 
-SARSA evaluates the policy that actually acts. If that policy is $\epsilon$-greedy, then it still sometimes makes exploratory moves. Near the cliff, one exploratory mistake can be very costly, so SARSA may prefer a safer route farther from the cliff.
+![Expected SARSA](solution_expected_sarsa_deterministic_path.webp)
+
+Expected SARSA learns the middle route. It is still on-policy in this setup, so it is also evaluating the $\epsilon$-greedy policy that may explore. The difference is that it does not wait to see which single $a^\prime$ was sampled. After reaching $s^\prime$, it asks what would happen on average if the agent followed the $\epsilon$-greedy policy from there:
+
+$$
+r + \gamma \sum_{a^\prime} \pi(a^\prime \mid s^\prime)q(s^\prime, a^\prime)
+$$
+
+If $s^\prime$ is close to the cliff, that average includes the small chance that exploration picks down and falls. So Expected SARSA already knows that states near the cliff are risky under the $\epsilon$-greedy policy. But it also sees that going all the way to the top row costs extra steps. In this run, the middle route has the best balance: safer than the cliff edge, but shorter than the top path.
+
+### Q-learning
+
+![Q-learning](solution_q_learning_deterministic_path.webp)
+
+Q-learning learns the shortest route just above the cliff. It is off-policy: the behavior policy may still be $\epsilon$-greedy during training, but the update learns action-values for a greedy target policy. Its target uses the best next action:
+
+$$
+r + \gamma \max_{a^\prime} q(s^\prime, a^\prime)
+$$
+
+So after a move reaches $s^\prime$, Q-learning does not ask what random exploratory action might be sampled there. It assumes the agent will take the best-known action. Under that assumption, the path directly above the cliff is attractive: it reaches the goal in the fewest steps, and the greedy policy will not intentionally move down into the cliff. The agent may still fall during training because the behavior policy explores, but that exploration risk is not part of the policy Q-learning is learning.
+
+### Exercise
+
+Want to test your understanding? I prepared an exercise for this lesson in my [Reinforcement Learning Course](https://github.com/elkotito/reinforcement-learning-course/tree/main/lesson2).
 
 ## Summary
 
-Value Iteration works cleanly in a model-based setting because the transition probabilities let us compute exact Bellman backups and compare actions before acting. In a model-free setting, the agent chooses one action, observes one outcome, and moves on. Exact expectations are replaced by samples collected from interaction.
+The cliff-walking example shows why the details in the update target matter. Monte Carlo Control, SARSA, Expected SARSA, and Q-learning all learn from sampled interaction, but they prefer different routes because they account for future experience in different ways: a full return, a sampled next action, an expected next action, or a greedy maximum.
+
+This brings us back to the main shift from the previous article. Value Iteration works cleanly in a model-based setting because the transition probabilities let us compute exact Bellman backups and compare actions before acting. In a model-free setting, the agent chooses one action, observes one outcome, and moves on. Exact expectations are replaced by samples collected from interaction.
 
 Monte Carlo learning uses complete returns from finished episodes. Temporal Difference learning updates after each step by bootstrapping from current estimates.
 

@@ -1,6 +1,6 @@
 ---
-title: "Reinforcement Learning 103a: Approximate Methods for Model-free RL"
-description: "Approximate model-free Reinforcement Learning from first principles: function approximation, regression targets, loss functions, semi-gradient TD, approximate SARSA, Expected SARSA, Q-learning, and the deadly triad."
+title: "Reinforcement Learning 103: Approximate Methods"
+description: "Approximate model-free RL: function approximation, regression targets, loss functions, semi-gradient TD, approximate SARSA, Expected SARSA, Q-learning, and the deadly triad."
 date: 2026-06-20
 tags:
   [
@@ -95,7 +95,7 @@ The inputs are known, the labels are known, and the optimization problem is fixe
 
 So approximate RL borrows tools from supervised learning, but the learning problem keeps moving while we train.
 
-## Loss Functions
+## Loss Function
 
 For a sampled pair $(S_t, A_t)$ with target $y_t$, the simplest objective is squared error:
 
@@ -103,15 +103,11 @@ $$
 L_t(\theta) = \frac{1}{2}\left(y_t - q_\theta(S_t, A_t)\right)^2
 $$
 
-The factor $\frac{1}{2}$ is only there because it makes the derivative cleaner. It does not change the minimizer.
-
-Huber loss is also common in deep RL because occasional large TD errors can produce large gradients. Here, MSE is enough because it keeps the update algebra simple.
+The factor $\frac{1}{2}$ is only there because it makes the derivative cleaner. It does not change the minimizer. Huber loss is also common in deep RL because occasional large TD errors can produce large gradients. Here, MSE is enough because it keeps the update algebra simple.
 
 The important question is where $y_t$ comes from. Monte Carlo targets use sampled returns. TD targets bootstrap from another value estimate, which makes the target available earlier but also makes it depend on the current approximator.
 
 After that, we still need to ask how to optimize this loss when both the target and the data distribution come from interaction.
-
-## Finding Targets
 
 ### Monte Carlo
 
@@ -121,39 +117,41 @@ $$
 y_t^{\text{MC}} = G_t
 $$
 
-The Monte Carlo target has a nice property: once the episode is finished, $G_t$ is just a number. It does not depend on $\theta$. From the point of view of gradient descent, it behaves like an ordinary supervised label.
+The Monte Carlo target has a nice property: once the episode is finished, $G_t$ is just a number. It does not depend on $\theta$. From the point of view of gradient descent, it behaves like an ordinary supervised label. This means Monte Carlo does not have bootstrap bias: errors in the current estimate $q_\theta$ do not enter the target.
 
-The downside is that we must wait until the return is known. For long episodes this delays learning. For continuing tasks, there may be no natural episode end. Monte Carlo targets can also have high variance because the full return depends on every random event that happens after time $t$.
+The downside is that we must wait until the return is known. For long episodes this delays learning. For continuing tasks, there may be no natural episode end. Monte Carlo targets can also have high variance because $G_t$ is a sum over the rest of the trajectory. Each future reward is a random variable, so a long-horizon return adds many random variables into one target.
 
-This is why TD methods are popular: they update sooner and usually have lower variance. But it is not true that TD is always better. TD introduces bias through bootstrapping. A useful empirical reminder is the paper [TD or not TD: Analyzing the Role of Temporal Differencing in Deep Reinforcement Learning](https://arxiv.org/abs/1806.01175), which found that finite-horizon Monte Carlo targets can be competitive in deep RL settings. The practical choice is a bias-variance and engineering tradeoff, not a universal rule.
+This is why TD methods are popular: they update sooner and usually have lower variance, but it is not true that TD is always better. TD introduces bias through bootstrapping. A useful empirical reminder is the paper [TD or not TD: Analyzing the Role of Temporal Differencing in Deep Reinforcement Learning](https://arxiv.org/abs/1806.01175), which found that finite-horizon Monte Carlo targets can be competitive in deep RL settings. The practical choice is a bias-variance and engineering tradeoff, not a universal rule.
 
 ### Temporal Difference
 
 The one-step SARSA target is:
 
 $$
-y_t^{\text{SARSA}} = R_t + \gamma q_\theta(S_{t+1}, A_{t+1})
+y_t^{\text{SARSA}}(\theta) = R_t + \gamma q_\theta(S_{t+1}, A_{t+1})
 $$
 
-The cost is that the target uses our current estimate $q_\theta$. If $q_\theta(S_{t+1}, A_{t+1})$ is wrong, then the target is wrong too. This is what people mean when they say TD targets are biased: the expected TD target equals the true Bellman target only when the current action-value estimate in the bootstrap term is already correct.
+Compared with Monte Carlo, this target usually has lower variance because it does not sum over the whole remaining trajectory. The cost is that it uses our current estimate $q_\theta$. If $q_\theta(S_{t+1}, A_{t+1})$ is wrong, then the target is wrong too. This is what people mean when they say TD targets are biased: the expected TD target equals the true Bellman target only when the current action-value estimate in the bootstrap term is already correct.
 
 This bias is not necessarily bad. Bootstrapping often gives much more sample-efficient learning. It just means we should remember that TD is not a fixed-label supervised learning problem. The label is partly produced by the model we are training.
 
-Expected SARSA reduces one source of randomness by replacing the sampled next action with a policy expectation:
+SARSA still has action-sampling variance. Once the next state $S_{t+1}$ has been observed, the target is a sum with two random variables: the reward $R_t$ and the sampled next action $A_{t+1}$. Expected SARSA has the same bootstrap bias as SARSA, but lower variance in the target because it removes the next-action random variable $A_{t+1}$ and replaces it with a policy expectation:
 
 $$
-y_t^{\text{Expected SARSA}} =
+y_t^{\text{Expected SARSA}}(\theta) =
 R_t + \gamma \sum_{a^\prime}\pi(a^\prime \mid S_{t+1})q_\theta(S_{t+1}, a^\prime)
 $$
 
 Q-learning uses the Bellman optimality target:
 
 $$
-y_t^{\text{Q-learning}} =
+y_t^{\text{Q-learning}}(\theta) =
 R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime)
 $$
 
-## Optimizing the Loss
+Like Expected SARSA, Q-learning does not sample the next action for the target. Conditioned on the observed next state $S_{t+1}$, the only remaining random variable in the one-step target is $R_t$. This usually means less variance than SARSA, but the target is still biased because it bootstraps from the current $q_\theta$. Q-learning can also introduce overestimation bias: when action-value estimates are noisy, the max tends to select actions whose estimates are too high.
+
+### Optimization
 
 Now assume we can produce a target $y_t$ from Monte Carlo or TD. The next question is how to minimize the loss.
 
@@ -199,7 +197,9 @@ So we use stochastic gradient descent. Each sampled transition gives a noisy est
 
 This is the "distribution of rollouts" view: the agent's experience stream defines which parts of the state-action space are trained more often.
 
-## Gradient Descent with Fixed Targets
+## Gradient Descent
+
+### Monte Carlo
 
 First consider the easy case where the target $y_t$ is fixed with respect to $\theta$. This is true for a completed Monte Carlo return $G_t$.
 
@@ -229,31 +229,27 @@ $$
 \theta \leftarrow \theta + \alpha \delta_t \nabla_\theta q_\theta(S_t, A_t)
 $$
 
-This is the basic approximate value update. It says: change the parameters in the direction that would increase the prediction if the target is larger than the prediction, and decrease the prediction if the target is smaller.
-
-For a linear function approximator, this becomes especially simple. Suppose:
+This is the basic approximate value update. It says: change the parameters in the direction that would increase the prediction if the target is larger than the prediction, and decrease the prediction if the target is smaller. For a linear function approximator, this becomes especially simple. Suppose:
 
 $$
-q_\theta(s, a) = \theta^\top x(s, a)
+q_\theta(s, a) = \theta^\top \phi(s, a)
 $$
 
-where $x(s, a)$ is a feature vector. Then:
+where $\phi(s, a)$ is a feature vector. Then:
 
 $$
-\nabla_\theta q_\theta(s, a) = x(s, a)
+\nabla_\theta q_\theta(s, a) = \phi(s, a)
 $$
 
 and the update is:
 
 $$
-\theta \leftarrow \theta + \alpha \delta_t x(S_t, A_t)
+\theta \leftarrow \theta + \alpha \delta_t \phi(S_t, A_t)
 $$
 
-This looks very close to a tabular update. In fact, a table can be viewed as a special case of linear approximation where every state-action pair has its own one-hot feature.
+This looks very close to a tabular update. In fact, a table can be viewed as a special case of linear approximation where every state-action pair has its own one-hot feature. The difference is that in a general feature representation, multiple state-action pairs share features. Updating $\theta$ for one pair also changes predictions for other pairs with overlapping features.
 
-The difference is that in a general feature representation, multiple state-action pairs share features. Updating $\theta$ for one pair also changes predictions for other pairs with overlapping features.
-
-## Semi-gradient Methods
+### Semi-gradient Methods
 
 TD targets are different from Monte Carlo targets because they can depend on $\theta$.
 
@@ -273,22 +269,13 @@ $$
 If we take the full gradient, the target also has a derivative:
 
 $$
-\nabla_\theta L_t(\theta)
-=
-\left(y_t(\theta) - q_\theta(S_t, A_t)\right)
-\left(
-\nabla_\theta y_t(\theta)
--
-\nabla_\theta q_\theta(S_t, A_t)
-\right)
+\nabla_\theta L_t(\theta) = \left(y_t(\theta) - q_\theta(S_t, A_t)\right) \left( \nabla_\theta y_t(\theta) - \nabla_\theta q_\theta(S_t, A_t) \right)
 $$
 
 For the SARSA target:
 
 $$
-\nabla_\theta y_t(\theta)
-=
-\gamma \nabla_\theta q_\theta(S_{t+1}, A_{t+1})
+\nabla_\theta y_t(\theta) = \gamma \nabla_\theta q_\theta(S_{t+1}, A_{t+1})
 $$
 
 So the full gradient would update parameters through both the current prediction and the next-state prediction inside the target.
@@ -298,10 +285,10 @@ TD methods usually do not do that. They use a semi-gradient. A semi-gradient tre
 So we still define:
 
 $$
-\delta_t = y_t - q_\theta(S_t, A_t)
+\delta_t = y_t(\theta) - q_\theta(S_t, A_t)
 $$
 
-but the update ignores $\nabla_\theta y_t$:
+but the update ignores $\nabla_\theta y_t(\theta)$:
 
 $$
 \theta \leftarrow \theta + \alpha \delta_t \nabla_\theta q_\theta(S_t, A_t)
@@ -320,12 +307,7 @@ $$
 also depends on $\theta$. Approximate Q-learning normally uses the semi-gradient update:
 
 $$
-\theta \leftarrow \theta + \alpha
-\left(
-R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime)
-- q_\theta(S_t, A_t)
-\right)
-\nabla_\theta q_\theta(S_t, A_t)
+\theta \leftarrow \theta + \alpha \left(R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime) - q_\theta(S_t, A_t) \right) \nabla_\theta q_\theta(S_t, A_t)
 $$
 
 The fact that a behavior policy collected the transition does not make the target fixed. The sampled transition $(S_t, A_t, R_t, S_{t+1})$ is fixed after it is observed, but the bootstrap value $\max_{a^\prime}q_\theta(S_{t+1}, a^\prime)$ still depends on the parameters.
@@ -338,204 +320,52 @@ $$
 
 where $\theta^-$ is held constant while updating $\theta$. This idea becomes central in Deep Q-Networks.
 
-## Approximate SARSA
-
-Approximate SARSA is the function-approximation version of the tabular SARSA update.
-
-The policy $\pi$ is usually derived from the current action-value estimates. For example, it may be $\epsilon$-greedy with respect to $q_\theta$.
-
-At time $t$, we have:
-
-$$
-S_t, A_t, R_t, S_{t+1}, A_{t+1}
-$$
-
-where $A_{t+1}$ is sampled from the same policy $\pi$ that the algorithm is evaluating.
-
-For a non-terminal next state, the target is:
-
-$$
-y_t = R_t + \gamma q_\theta(S_{t+1}, A_{t+1})
-$$
-
-The TD error is:
-
-$$
-\delta_t =
-R_t + \gamma q_\theta(S_{t+1}, A_{t+1})
-- q_\theta(S_t, A_t)
-$$
-
-and the semi-gradient update is:
-
-$$
-\theta \leftarrow \theta + \alpha \delta_t
-\nabla_\theta q_\theta(S_t, A_t)
-$$
-
-For a terminal next state:
-
-$$
-\delta_t = R_t - q_\theta(S_t, A_t)
-$$
-
-There are two sources of sampling noise in the non-terminal SARSA target.
-
-First, the environment samples the reward and next state:
-
-$$
-R_t, S_{t+1}
-$$
-
-Second, the policy samples the next action:
-
-$$
-A_{t+1} \sim \pi(\cdot \mid S_{t+1})
-$$
-
-This second source of randomness is not always necessary. If the action space is small and discrete, we can average over next actions exactly. That gives Expected SARSA.
-
-## Approximate Expected SARSA
-
-Expected SARSA uses the same sampled transition $(S_t, A_t, R_t, S_{t+1})$, but it does not sample the next action for the target. It computes the expected next value under the target policy:
-
-$$
-\sum_{a^\prime}\pi(a^\prime \mid S_{t+1})q_\theta(S_{t+1}, a^\prime)
-$$
-
-For a non-terminal next state, the target is:
-
-$$
-y_t =
-R_t + \gamma
-\sum_{a^\prime}\pi(a^\prime \mid S_{t+1})q_\theta(S_{t+1}, a^\prime)
-$$
-
-The TD error is:
-
-$$
-\delta_t =
-R_t + \gamma
-\sum_{a^\prime}\pi(a^\prime \mid S_{t+1})q_\theta(S_{t+1}, a^\prime)
-- q_\theta(S_t, A_t)
-$$
-
-and the semi-gradient update is:
-
-$$
-\theta \leftarrow \theta + \alpha \delta_t
-\nabla_\theta q_\theta(S_t, A_t)
-$$
-
-Expected SARSA usually has lower variance than SARSA because it removes the randomness from the sampled next action. The reward and next state are still sampled from the environment, but the action part of the target is averaged exactly.
-
-The cost is that we need to know the action probabilities and sum over actions. This is cheap for small discrete action spaces. It is harder for large or continuous action spaces.
-
-Expected SARSA can be on-policy or off-policy.
-
-It is on-policy when the transitions are collected by the same policy $\pi$ used inside the expectation. It is off-policy when a behavior policy $b$ collects the transition, but the expectation uses a different target policy $\pi$.
-
-The current action $A_t$ in the sampled transition does not have to come from $\pi$ for the one-step target to make sense, because $q_\pi(s, a)$ is defined as: take action $a$ first, then follow $\pi$. But the behavior policy still matters because it determines which state-action pairs get updated. Without coverage, we cannot learn accurate values for pairs that never appear in the data.
-
-## Approximate Q-learning
-
-Approximate Q-learning uses the Bellman optimality target. It does not evaluate the exploratory behavior policy. It learns toward the greedy target:
-
-$$
-q^*(s, a)
-$$
-
-For a sampled transition:
-
-$$
-(S_t, A_t, R_t, S_{t+1})
-$$
-
-the non-terminal target is:
-
-$$
-y_t = R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime)
-$$
-
-The TD error is:
-
-$$
-\delta_t =
-R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime)
-- q_\theta(S_t, A_t)
-$$
-
-and the semi-gradient update is:
-
-$$
-\theta \leftarrow \theta + \alpha \delta_t
-\nabla_\theta q_\theta(S_t, A_t)
-$$
-
-For a terminal next state:
-
-$$
-\delta_t = R_t - q_\theta(S_t, A_t)
-$$
-
-This is the direct approximate version of tabular Q-learning.
-
-It is off-policy because the target uses a greedy action in the next state, regardless of which action the behavior policy actually takes next. The behavior policy can be $\epsilon$-greedy, fully exploratory, or even an older policy that produced logged data. The update still points toward the greedy Bellman optimality target.
-
-However, off-policy does not mean "data does not matter." The behavior policy controls the training distribution. If the data never covers an important state-action pair, Q-learning cannot learn its value. With function approximation, lack of coverage is even more dangerous because the model may extrapolate values for unseen actions and then bootstrap from those extrapolations.
-
-Approximate Q-learning is the conceptual bridge to DQN. DQN keeps the same target idea, but adds engineering tools such as replay buffers and target networks to make neural Q-learning stable enough in practice.
-
 ## Algorithm View
 
-The approximate control algorithms share the same loop.
-
-1. Initialize parameters $\theta$.
-2. Choose an action $A_t$ using a behavior policy, often $\epsilon$-greedy with respect to $q_\theta$.
-3. Take the action and observe $R_t$ and $S_{t+1}$.
-4. Build a target $y_t$.
-5. Compute the TD error:
-
-   $$
-   \delta_t = y_t - q_\theta(S_t, A_t)
-   $$
-
-6. Apply the semi-gradient update:
-
-   $$
-   \theta \leftarrow \theta + \alpha \delta_t
-   \nabla_\theta q_\theta(S_t, A_t)
-   $$
-
-The algorithms differ only in step 4.
-
-SARSA samples the next action:
+The approximate algorithms share the same regression step. For a sampled pair $(S_t, A_t)$, build a scalar target $y_t$ or $y_t(\theta)$, compute:
 
 $$
-y_t = R_t + \gamma q_\theta(S_{t+1}, A_{t+1})
+\delta_t = y_t - q_\theta(S_t, A_t)
 $$
 
-Expected SARSA averages over the target policy:
+and update:
 
 $$
-y_t =
-R_t + \gamma \sum_{a^\prime}\pi(a^\prime \mid S_{t+1})
-q_\theta(S_{t+1}, a^\prime)
+\theta \leftarrow \theta + \alpha \delta_t
+\nabla_\theta q_\theta(S_t, A_t)
 $$
 
-Q-learning uses the greedy target:
+The algorithm-specific part is only how the target is constructed.
+
+For Monte Carlo, wait until the return is known and use:
 
 $$
-y_t = R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime)
+y_t = G_t
 $$
 
-For terminal next states, all three targets reduce to:
+For one-step TD methods, sample a transition $(S_t, A_t, R_t, S_{t+1})$. If $S_{t+1}$ is terminal, use:
 
 $$
 y_t = R_t
 $$
 
-This similarity is useful. Approximate SARSA, Expected SARSA, and Q-learning are not three unrelated algorithms. They are three ways to choose the bootstrap term in the same approximate regression update.
+Otherwise, choose the bootstrap term according to the method:
+
+$$
+y_t(\theta) =
+\begin{cases}
+R_t + \gamma q_\theta(S_{t+1}, A_{t+1}),
+& \text{SARSA, with } A_{t+1} \sim \pi(\cdot \mid S_{t+1}) \\
+R_t + \gamma \sum_{a^\prime}\pi(a^\prime \mid S_{t+1})q_\theta(S_{t+1}, a^\prime),
+& \text{Expected SARSA} \\
+R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime),
+& \text{Q-learning}
+\end{cases}
+$$
+
+SARSA needs the sampled next action because it evaluates the policy that actually chooses actions. Expected SARSA removes that action-sampling noise by averaging over $\pi(\cdot \mid S_{t+1})$. Q-learning replaces the policy expectation with a greedy action-value backup.
+
+For Monte Carlo, $G_t$ is fixed once the return is known, so this is ordinary gradient descent on a sampled label. For TD methods, the target may contain $q_\theta$, so the update above is a semi-gradient step: during the current update, $y_t(\theta)$ is treated as fixed.
 
 ## Why Approximate RL Is Hard
 
@@ -549,15 +379,9 @@ The difficulty is that each of those steps hides a problem.
 
 ### Generalization and Interference
 
-Function approximation generalizes. That is the point.
+Function approximation generalizes; that is the point. If two states share features, then learning from one state can improve predictions in the other. This is what lets us handle large state spaces without experiencing every possible image, robot position, or state-action pair separately.
 
-If two states share features, then learning from one state can improve predictions in the other. This is what lets us handle large state spaces. We do not need to experience every possible image or every possible robot position.
-
-But shared parameters also cause interference. An update from one transition can change values for many other states and actions, including states we did not intend to change.
-
-In tabular learning, a bad update is local. In approximate learning, a bad update can spread through the function approximator.
-
-This is especially visible with neural networks. A single gradient step can change the representation used by many states. Sometimes that improves generalization. Sometimes it makes the agent forget behavior that was previously working.
+The same shared parameters also create interference. An update from one transition can change values for many other states and actions, including ones we did not intend to change. In tabular learning, a bad update is local; in approximate learning, it can spread through the function approximator. With neural networks this is especially visible, because a single gradient step can change the representation used by many states. Sometimes that improves generalization, and sometimes it damages behavior that was previously working.
 
 ### Correlated Data
 
@@ -567,30 +391,15 @@ RL data is naturally correlated. During a rollout, consecutive states are close 
 
 Correlated updates also make the gradient estimates less representative of the broader training distribution. Instead of getting a useful average direction, the optimizer may chase whatever small region the agent recently visited.
 
-This is one reason experience replay is useful in DQN. A replay buffer lets the agent train on a more mixed batch of past transitions instead of only the latest transition.
+This is one reason experience replay is useful. A replay buffer lets the agent train on a more mixed batch of past transitions instead of only the latest transition.
 
 ### Moving Data Distribution
 
-In ordinary supervised learning, the dataset is often fixed. In online RL, the dataset depends on the current policy.
+In ordinary supervised learning, the dataset is often fixed. In RL, the data distribution is produced by a behavior policy. If that behavior policy is tied to the current $q_\theta$, then changing $\theta$ also changes what data we collect.
 
-When $q_\theta$ changes, the greedy action can change:
+For example, if the behavior policy chooses actions $\epsilon$-greedily according to $q_\theta$, then changing $\theta$ changes both how the agent exploits and how it explores. That changes which states it visits, which actions it tries, and which rewards it observes. This is clearly true for on-policy methods such as SARSA, where the policy being evaluated is also the policy collecting data.
 
-$$
-\argmax_a q_\theta(s, a)
-$$
-
-If the behavior policy is $\epsilon$-greedy with respect to $q_\theta$, then changing $\theta$ changes how the agent explores and exploits. That changes which states it visits, which actions it tries, and which rewards it observes.
-
-This is clearly true for on-policy methods such as SARSA, where the policy being evaluated is also the policy collecting data.
-
-For Q-learning, there is a nuance. The target policy is greedy, so the algorithm is off-policy and can learn from data generated by another behavior policy. In that sense, Q-learning is less tied to the current behavior policy than SARSA. But if the behavior policy used online is still derived from $q_\theta$, then the data distribution still changes during training.
-
-So the better statement is:
-
-- SARSA's target and data collection are both tied to the current policy.
-- Q-learning's target is greedy and off-policy, but its online data distribution can still move if the behavior policy changes.
-
-Offline Q-learning has a fixed dataset, but then a different problem appears: the target may ask for values of actions that are poorly covered by the dataset.
+For Q-learning, there is a nuance. The target is greedy, so it is not defined by the behavior policy. The update can learn from data generated by another policy, but the behavior policy still determines which transitions are observed. The moving data distribution is not part of the Q-learning target itself; it appears when the behavior policy changes during training. If the dataset is fixed, as in offline Q-learning, this particular source of movement disappears, but a different problem appears: the target may ask for values of actions that are poorly covered by the dataset.
 
 ### Sharp Value Boundaries
 
@@ -608,25 +417,9 @@ Approximation works best when the features make behaviorally similar states clos
 
 ### Non-stationary Targets
 
-Even if the environment is stationary, the learning target may not be.
+We already saw this in the semi-gradient section. TD targets can contain $q_\theta$, so they are partly produced by the same model we are updating.
 
-For TD learning, the target contains the current value estimate:
-
-$$
-R_t + \gamma q_\theta(S_{t+1}, A_{t+1})
-$$
-
-or:
-
-$$
-R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime)
-$$
-
-When $\theta$ changes, these targets change too. The model is not training against a fixed label. It is chasing labels that are produced by its own current predictions.
-
-Policy improvement adds another source of movement. If the policy changes, then the state visitation distribution changes and the meaning of $q_\pi$ changes. The value of a state-action pair depends on what policy is followed afterward, so changing the policy changes the values we are trying to approximate.
-
-This is what non-stationarity means in this context. The environment dynamics may be fixed, but the supervised-learning problem induced by the RL algorithm keeps changing.
+The semi-gradient update treats the target as fixed for one gradient step, but it does not make the overall learning problem stationary. After $\theta$ changes, later targets are recomputed from the new value estimates. The problem is feedback: an error in $q_\theta$ can enter a target, be learned as if it were a label, and then influence future targets.
 
 ### The Deadly Triad
 
