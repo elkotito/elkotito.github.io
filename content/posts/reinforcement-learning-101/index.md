@@ -1,5 +1,5 @@
 ---
-title: "Reinforcement Learning 101: Policy Iteration and Value Iteration"
+title: "Reinforcement Learning 101: Policy Iteration & Value Iteration"
 description: "Model-based RL: MDPs, value functions, action-value functions, Bellman equations, and contraction mapping with full mathematical proofs of Policy Iteration and Value Iteration."
 date: 2026-06-17
 tags:
