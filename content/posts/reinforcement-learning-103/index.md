@@ -1,7 +1,7 @@
 ---
 title: "Reinforcement Learning 103: Approximate Methods"
 description: "Approximate model-free RL: function approximation, regression targets, loss functions, semi-gradient TD, approximate SARSA, Expected SARSA, Q-learning, and the deadly triad."
-date: 2026-06-20
+date: 2026-06-23
 tags:
   [
     "Reinforcement Learning",
@@ -387,9 +387,9 @@ The same shared parameters also create interference. An update from one transiti
 
 ### Correlated Data
 
-Supervised learning usually works best when mini-batches are reasonably mixed. The samples do not have to be perfectly independent, but strong correlation can make optimization worse.
+The clean SGD picture assumes that mini-batches give a reasonably representative estimate of the gradient of the training objective. This is easiest when samples are approximately independent and identically distributed (IID), or at least well mixed. The samples do not have to be perfectly independent, but strong correlation can make optimization worse.
 
-RL data is naturally correlated. During a rollout, consecutive states are close in time and often close in content. If the agent is driving down a road, many adjacent frames look almost the same. If we train directly on this stream, the model may overfit to the most recent part of experience and move away from older knowledge.
+RL data is naturally correlated, so it violates this IID picture. During a rollout, consecutive states are close in time and often close in content. If the agent is driving down a road, many adjacent frames look almost the same. If we train directly on this stream, the model may overfit to the most recent part of experience and move away from older knowledge.
 
 Correlated updates also make the gradient estimates less representative of the broader training distribution. Instead of getting a useful average direction, the optimizer may chase whatever small region the agent recently visited.
 
