@@ -383,6 +383,14 @@ Correlated updates also make the gradient estimates less representative of the b
 
 This is one reason experience replay is useful. A replay buffer lets the agent train on a more mixed batch of past transitions instead of only the latest transition, but then it works only for off-policy algorithms.
 
+### Moving Targets
+
+We already saw this in the semi-gradient section. During one gradient step, we detach the TD target and treat it like a temporary label.
+
+But the label is fixed only for that step. After we update $\theta$, the action-value estimates change. The next TD target is then built from the new $q_\theta$, so the target changes too.
+
+This is the moving target problem: the model is training against targets produced by its own changing predictions. The problem is not simply that the targets are wrong. Bootstrap targets are usually approximate. The problem is that a noisy or overestimated value can be used as a target, learned by earlier state-action pairs, and then reused in later targets. A deeper explanation will be in the next article.
+
 ### Moving Data Distribution
 
 In ordinary supervised learning, the dataset is often fixed. In RL, the data distribution is produced by a behavior policy. If that behavior policy is tied to the current $q_\theta$, then changing $\theta$ also changes what data we collect.
@@ -398,12 +406,6 @@ Function approximators are often smooth functions. Similar inputs tend to produc
 Imagine a helicopter flying close to a tree. A small change in position may be the difference between passing safely and crashing. The reward changes abruptly because one trajectory continues and the other terminates with a large penalty. In other words, two inputs can look close in raw pixels or coordinates while requiring very different value predictions.
 
 This does not always mean the true action-value function is mathematically non-differentiable, although it can be. The practical issue is the action-value function may have sharp boundaries or high curvature. A smooth approximator can smear the boundary and assign unsafe values to states near failure.
-
-### Non-stationary Targets
-
-We already saw this in the semi-gradient section. TD targets can contain $q_\theta$, so they are partly produced by the same model we are updating.
-
-The semi-gradient update treats the target as fixed for one gradient step, but it does not make the overall learning problem stationary. After $\theta$ changes, later targets are recomputed from the new action-value estimates. The issue is that in supervised learning, labels are external to the model, but in TD learning the target is partly computed from $q_\theta$ itself. An overestimate can enter a bootstrap target, be learned by earlier state-action pairs, and then influence later targets. A local estimation error can therefore become part of the training signal and destabilize learning.
 
 ### The Deadly Triad
 
@@ -445,6 +447,6 @@ $$
 \nabla_\theta q_\theta(S_t, A_t)
 $$
 
-The main lesson is that function approximation changes the learning dynamics. Correlated samples, moving data distributions, sharp value boundaries, non-stationary targets, and the deadly triad all appear because we no longer have independent table entries.
+The main lesson is that function approximation changes the learning dynamics. Correlated samples, moving data distributions, sharp value boundaries, moving targets, and the deadly triad all appear because we no longer have independent table entries.
 
 The next step is to make approximate Q-learning work with neural networks. That leads to Deep Q-Networks, where replay buffers and target networks are introduced as practical answers to the instability described here.
