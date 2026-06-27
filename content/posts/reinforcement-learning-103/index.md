@@ -103,11 +103,9 @@ $$
 L_t(\theta) = \frac{1}{2}\left(y_t - q_\theta(S_t, A_t)\right)^2
 $$
 
-The factor $\frac{1}{2}$ is only there because it makes the derivative cleaner. It does not change the minimizer. Huber loss is also common in deep RL because occasional large TD errors can produce large gradients. Here, mean squared error (MSE) is enough because it keeps the update algebra simple.
+Huber loss is also common in deep RL because occasional large TD errors can produce large gradients. The important question is where $y_t$ comes from. Monte Carlo targets use sampled returns. TD targets bootstrap from another action-value estimate, which makes the target available earlier, but also makes it depend on the current approximation.
 
-The important question is where $y_t$ comes from. Monte Carlo targets use sampled returns. TD targets bootstrap from another action-value estimate, which makes the target available earlier but also makes it depend on the current approximator.
-
-After that, we still need to ask how to optimize this loss when both the target and the data distribution come from interaction.
+After that deciding on the target, we still need optimize this loss when both the target and the data distribution come from interactions.
 
 ### Monte Carlo
 
@@ -119,9 +117,7 @@ $$
 
 The Monte Carlo target has a nice property: once the episode is finished, $G_t$ is just a number. It does not depend on $\theta$. From the point of view of gradient descent, it behaves like an ordinary supervised label. This means Monte Carlo does not have bootstrap bias: errors in the current estimate $q_\theta$ do not enter the target.
 
-The downside is that we must wait until the return is known. For long episodes this delays learning. For continuing tasks, there may be no natural episode end. Monte Carlo targets can also have high variance because $G_t$ is a sum over the rest of the trajectory. Each future reward is a random variable, so a long-horizon return adds many random variables into one target.
-
-This is why TD methods are popular: they update sooner and usually have lower variance, but it is not true that TD is always better. TD introduces bias through bootstrapping. A useful empirical reminder is the paper [TD or not TD: Analyzing the Role of Temporal Differencing in Deep Reinforcement Learning](https://arxiv.org/abs/1806.01175), which found that finite-horizon Monte Carlo targets can be competitive in deep RL settings. The practical choice is a bias-variance and engineering tradeoff, not a universal rule.
+The downside is that we must wait until the return is known. For long episodes this delays learning. For continuing tasks, there may be no natural episode end. Monte Carlo targets can also have high variance because $G_t$ is a sum over the rest of the trajectory. Each $R_t$, $R_{t+1}$, $R_{t+2}$ etc. is a random variable and the more random variables we sum together, the higher the variance.
 
 ### Temporal Difference
 
@@ -131,11 +127,15 @@ $$
 y_t^{\text{SARSA}}(\theta) = R_t + \gamma q_\theta(S_{t+1}, A_{t+1})
 $$
 
-Compared with Monte Carlo, this target usually has lower variance because it does not sum over the whole remaining trajectory. The cost is that it uses our current estimate $q_\theta$. If $q_\theta(S_{t+1}, A_{t+1})$ is wrong, then the target is wrong too. This is what people mean when they say TD targets are biased: the expected TD target equals the true Bellman target only when the current action-value estimate in the bootstrap term is already correct.
+Compared with Monte Carlo, this target usually has lower variance because it does not sum over the whole remaining trajectory. The cost is that it uses our current estimate $q_\theta$. If $q_\theta(S_{t+1}, A_{t+1})$ is wrong, then the target is wrong too.
 
-This bias is not necessarily bad. Bootstrapping often gives much more sample-efficient learning. It just means we should remember that TD is not a fixed-label supervised learning problem. The label is partly produced by the model we are training.
+You might wonder now: why would a model learn from a target that can be wrong? Recall contraction mappings and the Banach fixed-point theorem. The whole idea is that recursive Bellman-style equations can start from a wrong estimate, and repeatedly applying them can improve that estimate.
 
-SARSA still has action-sampling variance. Once the next state $S_{t+1}$ has been observed, the target is a sum with two random variables: the reward $R_t$ and the sampled next action $A_{t+1}$. Expected SARSA has the same bootstrap bias as SARSA, but lower variance in the target because it removes the next-action random variable $A_{t+1}$ and replaces it with a policy expectation:
+Having said that, the wrong target itself is not automatically the problem. The problem to keep in mind is the target can be systematically shifted every time we update $\theta$. It might lead to unstable learning. We will solve that problem in the next article by introducing a target network.
+
+Another thing to keep in mind is that the TD target has bootstrap bias. In approximate TD, we do not know the true value $q^\pi$, so we rely on the estimate produced by our approximator, for example a neural network $q_\theta$. In statistics, bias is the difference between the expected value of an estimator and the true value.
+
+In SARSA, once the next state $S_{t+1}$ has been observed, the target is a sum with two random variables: the reward $R_t$ and the sampled next action $A_{t+1}$. Expected SARSA has the same bootstrap bias as SARSA, but lower variance in the target because it removes the next-action random variable $A_{t+1}$ and replaces it with a policy expectation:
 
 $$
 y_t^{\text{Expected SARSA}}(\theta) =
@@ -149,7 +149,9 @@ y_t^{\text{Q-learning}}(\theta) =
 R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime)
 $$
 
-Like Expected SARSA, Q-learning does not sample the next action for the target. Conditioned on the observed next state $S_{t+1}$, the only remaining random variable in the one-step target is $R_t$. This usually means less variance than SARSA, but the target is still biased because it bootstraps from the current $q_\theta$. Q-learning can also introduce overestimation bias: when action-value estimates are noisy, the max tends to select actions whose estimates are too high.
+Similarly to Expected SARSA, Q-learning does not sample the next action for the target. However, Q-learning can introduce overestimation bias: when action-value estimates are noisy, the max tends to select actions whose estimates are too high. We will describe that in more detail in the next article.
+
+To sum up, Monte Carlo uses completed returns, but it has to wait and can have high variance. TD uses imperfect bootstrap targets, but it can update after one transition and often has lower variance. A useful empirical reminder is the paper [TD or not TD: Analyzing the Role of Temporal Differencing in Deep Reinforcement Learning](https://arxiv.org/abs/1806.01175), which found that finite-horizon Monte Carlo targets can be competitive in deep RL settings. The practical choice is a bias-variance and engineering tradeoff, not a universal rule.
 
 ### Training Distribution
 
@@ -183,7 +185,7 @@ $$
 
 The target may still describe a different policy, but the updates happen where the behavior policy provides data.
 
-A common misconception is to read $\mu(s, a)$ as "how important the state is" in some human sense. It is the training distribution. If the agent rarely visits a dangerous state, then ordinary SGD rarely updates that state. If we want to learn more accurately there, we need more samples, different exploration, replay, prioritization, or explicit weighting.
+A common misconception is to read $\mu(s, a)$ as how important the state is in some human sense, but it is the training distribution. If the agent rarely visits a dangerous state, then ordinary SGD rarely updates that state. If we want to learn more accurately there, we need more samples, different exploration, replay, prioritization, or explicit weighting.
 
 In practice, we cannot compute loss $J(\theta)$ directly:
 
@@ -293,19 +295,7 @@ prediction = neural_network(state, action)
 loss = 0.5 * (target - prediction).pow(2).mean()
 ```
 
-Equivalently, we can compute the target normally and detach it before forming the loss:
-
-```python
-target = reward + gamma * neural_network(next_state, next_action)
-target = target.detach()
-
-prediction = neural_network(state, action)
-loss = 0.5 * (target - prediction).pow(2).mean()
-```
-
 The intuition is practical. The bootstrap target is acting as a temporary label. We want to move the current action-value estimate toward the estimate of the next step. If we allowed the update to also change the next-step estimate, the model could reduce the loss by moving the target instead of improving the current prediction.
-
-This does not mean semi-gradient methods are mathematically meaningless. There are important convergence results for on-policy TD with linear function approximation under suitable assumptions. The guarantees become much more delicate once we add nonlinear approximators, control, or off-policy learning. The last combination is part of the deadly triad we will return to later.
 
 For Q-learning with function approximation, the same issue appears. The target:
 
@@ -319,9 +309,7 @@ $$
 \theta \leftarrow \theta + \alpha \left(R_t + \gamma \max_{a^\prime}q_\theta(S_{t+1}, a^\prime) - q_\theta(S_t, A_t) \right) \nabla_\theta q_\theta(S_t, A_t)
 $$
 
-The fact that a behavior policy collected the transition does not make the target fixed. The sampled transition $(S_t, A_t, R_t, S_{t+1})$ is fixed after it is observed, but the bootstrap value $\max_{a^\prime}q_\theta(S_{t+1}, a^\prime)$ still depends on the parameters.
-
-One way to make the target fixed with respect to the current update is to use a separate target network:
+The fact that a behavior policy collected the transition does not make the target fixed. The sampled transition $(S_t, A_t, R_t, S_{t+1})$ is fixed after it is observed, but the bootstrap value $\max_{a^\prime}q_\theta(S_{t+1}, a^\prime)$ still depends on the parameters. One way to make the target fixed with respect to the current update is to use a separate target network:
 
 $$
 y_t = R_t + \gamma \max_{a^\prime}q_{\theta^-}(S_{t+1}, a^\prime)
@@ -393,7 +381,7 @@ RL data is naturally correlated, so it violates this IID picture. During a rollo
 
 Correlated updates also make the gradient estimates less representative of the broader training distribution. Instead of getting a useful average direction, the optimizer may chase whatever small region the agent recently visited.
 
-This is one reason experience replay is useful. A replay buffer lets the agent train on a more mixed batch of past transitions instead of only the latest transition.
+This is one reason experience replay is useful. A replay buffer lets the agent train on a more mixed batch of past transitions instead of only the latest transition, but then it works only for off-policy algorithms.
 
 ### Moving Data Distribution
 
@@ -401,43 +389,41 @@ In ordinary supervised learning, the dataset is often fixed. In RL, the data dis
 
 For example, if the behavior policy chooses actions $\epsilon$-greedily according to $q_\theta$, then changing $\theta$ changes both how the agent exploits and how it explores. That changes which states it visits, which actions it tries, and which rewards it observes. This is clearly true for on-policy methods such as SARSA, where the policy being evaluated is also the policy collecting data.
 
-For Q-learning, there is a nuance. The target is greedy, so it is not defined by the behavior policy. The update can learn from data generated by another policy, but the behavior policy still determines which transitions are observed. The moving data distribution is not part of the Q-learning target itself; it appears when the behavior policy changes during training. If the dataset is fixed, as in offline Q-learning, this particular source of movement disappears, but a different problem appears: the target may require estimates for actions that are poorly covered by the dataset.
+For Q-learning, the target is greedy rather than defined by the behavior policy, so the update can use off-policy data, but it is the behavior policy that determines which transitions are observed. The moving distribution comes from data collection, not from the target itself. With a fixed offline dataset this movement disappears, although the target may still ask for values of actions that are rare or missing in the data.
 
 ### Sharp Value Boundaries
 
-Function approximators are often smooth functions. Similar inputs tend to produce similar outputs. That is helpful when similarity in input space matches similarity in action-value. But in RL, tiny changes in state can sometimes cause huge changes in return.
+Function approximators are often smooth functions. Similar inputs tend to produce similar outputs. That is helpful when similarity in input space matches similarity in action-value, but in RL, tiny changes in state can sometimes cause huge changes in return.
 
-Imagine a helicopter flying close to a tree. A small change in position may be the difference between passing safely and crashing. The reward changes abruptly because one trajectory continues and the other terminates with a large penalty.
+Imagine a helicopter flying close to a tree. A small change in position may be the difference between passing safely and crashing. The reward changes abruptly because one trajectory continues and the other terminates with a large penalty. In other words, two inputs can look close in raw pixels or coordinates while requiring very different value predictions.
 
-This does not always mean the true action-value function is mathematically non-differentiable, although it can be. The practical issue is broader: the action-value function may have sharp boundaries or high curvature. A smooth approximator can smear the boundary and assign unsafe values to states near failure.
-
-Approximation works best when the representation $\phi(s, a)$ preserves the distinctions that matter for action values. Two inputs can look close in raw pixels or coordinates while requiring very different value predictions.
+This does not always mean the true action-value function is mathematically non-differentiable, although it can be. The practical issue is the action-value function may have sharp boundaries or high curvature. A smooth approximator can smear the boundary and assign unsafe values to states near failure.
 
 ### Non-stationary Targets
 
 We already saw this in the semi-gradient section. TD targets can contain $q_\theta$, so they are partly produced by the same model we are updating.
 
-The semi-gradient update treats the target as fixed for one gradient step, but it does not make the overall learning problem stationary. After $\theta$ changes, later targets are recomputed from the new action-value estimates. The issue is feedback: in supervised learning, labels are external to the model, but in TD learning the target is partly computed from $q_\theta$ itself. An overestimate can enter a bootstrap target, be learned by earlier state-action pairs, and then influence later targets. A local estimation error can therefore become part of the training signal and destabilize learning.
+The semi-gradient update treats the target as fixed for one gradient step, but it does not make the overall learning problem stationary. After $\theta$ changes, later targets are recomputed from the new action-value estimates. The issue is that in supervised learning, labels are external to the model, but in TD learning the target is partly computed from $q_\theta$ itself. An overestimate can enter a bootstrap target, be learned by earlier state-action pairs, and then influence later targets. A local estimation error can therefore become part of the training signal and destabilize learning.
 
 ### The Deadly Triad
 
-The most important stability warning is the deadly triad. It is the combination of three ingredients:
+The feedback loop above is especially dangerous in what is usually called the deadly triad:
 
 1. Function approximation
 2. Bootstrapping
 3. Off-policy learning
 
-Each ingredient is useful by itself. Function approximation lets us generalize across large state-action spaces. Bootstrapping lets us update before the full return is known. Off-policy learning lets us learn about one policy from data generated by another policy.
+None of these is suspicious on its own. Function approximation is how we handle large state-action spaces. Bootstrapping is how we update before the full return is known. Off-policy learning is how we learn from data generated by a different policy.
 
-The problem is that all three together can create a feedback loop.
+The trouble starts when they are combined. With function approximation, an update for one state-action pair also changes predictions for other pairs. With bootstrapping, those changed predictions are used as targets for later updates. With off-policy learning, the data may be weak exactly where the target asks for values, so the model has to extrapolate.
 
-With function approximation, an update for one state-action pair changes predictions for other pairs. With bootstrapping, those predictions are used as targets for more updates. With off-policy learning, the update distribution may not match the distribution of the target policy, so the function approximator may be forced to extrapolate in regions where the data is weak.
+For example, suppose an action-value is too high in a poorly covered next state. A bootstrapped target uses that value. The update then increases the estimate for a previous state-action pair. Because parameters are shared, that same update may also change other predictions. Later targets can use those changed predictions again. The error is no longer isolated in one table entry; it becomes part of the training signal.
 
-Errors can then reinforce themselves. An action-value is overestimated in a poorly covered next state. A bootstrapped target uses that overestimate. The update increases the estimate for a previous state-action pair. Because parameters are shared, this may further increase other predictions. The process can oscillate or diverge.
+This is where the tabular fixed-point intuition stops being enough. The update may still settle down, but it is no longer guaranteed to behave like a simple contraction. It can oscillate or diverge.
 
-This is not just a neural-network problem. Divergence examples exist even with linear function approximation. Modern papers such as [Breaking the Deadly Triad with a Target Network](https://arxiv.org/abs/2101.08862) study how target networks can stabilize some of these dynamics.
+This is not just a neural-network problem. Divergence examples exist even with linear function approximation. Papers such as [Breaking the Deadly Triad with a Target Network](https://arxiv.org/abs/2101.08862) study how target networks can stabilize some of these dynamics.
 
-The deadly triad does not mean every approximate off-policy TD method always fails. DQN is proof that these ingredients can work very well in practice. It means the simple tabular convergence intuition no longer applies. Once all three ingredients are present, stability becomes something we must design for.
+The deadly triad doesn't mean that every approximate off-policy TD method fails. DQN uses all three ingredients and can work very well. The whole point is that stability is no longer automatically guaranteed.
 
 ## Final Thoughts
 
@@ -459,6 +445,6 @@ $$
 \nabla_\theta q_\theta(S_t, A_t)
 $$
 
-The main lesson is that function approximation is not just a scaling trick, it changes the learning dynamics. Correlated samples, moving data distributions, sharp value boundaries, non-stationary targets, and the deadly triad all appear because we no longer have independent table entries.
+The main lesson is that function approximation changes the learning dynamics. Correlated samples, moving data distributions, sharp value boundaries, non-stationary targets, and the deadly triad all appear because we no longer have independent table entries.
 
 The next step is to make approximate Q-learning work with neural networks. That leads to Deep Q-Networks, where replay buffers and target networks are introduced as practical answers to the instability described here.
