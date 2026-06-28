@@ -25,7 +25,7 @@ draft: true
 
 In the previous article, we replaced the tabular action-value function $q(s, a)$ with a parameterized approximation: $q_\theta(s, a)$. We will use neural networks to approximate $q_\theta(s, a)$.
 
-Deep Q-Network (DQN) is the version of approximate Q-learning that made this practical at a scale. When we combine Q-learning with neural networks, then we must deal with the instability created by correlated data, moving targets, changing behavior distributions, and large TD errors. This article presents solutions to deal with those problems.
+Deep Q-Network (DQN) is the version of approximate Q-learning that made it practical at a scale. When we combine Q-learning with neural networks, then we must deal with the instability created by correlated data, moving targets, changing behavior distributions, and large TD errors. This article presents solutions to deal with those problems.
 
 Before we continue, we need to understand why we moved forward with approximate Q-learning, not approximate SARSA or Expected SARSA.
 
@@ -292,7 +292,18 @@ Atari environments return both `terminated` and `truncated`. Only true terminati
 transition = Transition(state=state, action=action, reward=clipped_reward, next_state=next_state, done=terminated)
 ```
 
+### Demo
+
+Pong is a two-player Atari game. In this demo, our learned policy controls the paddle on the right after about 10 hours of training on a MacBook, and you can see the agent exploiting certain strategies that feel like reward hacking.
+
+{{< rawhtml >}}
+<video autoplay muted loop playsinline preload="metadata" style="display: block; width: 360px; max-width: 100%; height: auto; margin: 0 auto;">
+
+  <source src="dqn_output.webm" type="video/webm">
+  <source src="dqn_output.mp4" type="video/mp4">
+</video>
+{{< /rawhtml >}}
+
 ### Code
 
 Feel free to take a look at [my implementation on GitHub](https://github.com/elkotito/dqn-implementations). I recommend implementing it yourself rather than having an agent do it. It is the best way to learn.
-
