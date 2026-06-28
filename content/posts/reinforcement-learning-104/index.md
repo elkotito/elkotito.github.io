@@ -18,7 +18,7 @@ tags:
     "Distributional DQN",
     "Bootstrapped DQN",
   ]
-draft: true
+draft: false
 ---
 
 ## Introduction
