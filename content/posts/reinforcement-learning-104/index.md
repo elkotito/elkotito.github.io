@@ -1,6 +1,6 @@
 ---
-title: "Reinforcement Learning 104: Deep Q-Networks"
-description: "Deep Q-Networks: DQN, experience replay, target networks, reward clipping, overestimation bias, Double DQN, Dueling DQN, Noisy DQN, Distributional DQN, Bootstrapped DQN."
+title: "Reinforcement Learning 104: Deep Q-Networks (Part 1)"
+description: "Deep Q-Networks: DQN, Experience Replay, Prioritized Experience Replay, Target Networks, Reward Clipping, Overestimation Bias, Double DQN, Dueling DQN."
 date: 2026-06-26
 tags:
   [
@@ -9,14 +9,12 @@ tags:
     "DQN",
     "Deep Q-Network",
     "Experience Replay",
+    "Prioritized Experience Replay",
     "Target Network",
     "Reward Clipping",
     "Overestimation Bias",
     "Double DQN",
     "Dueling DQN",
-    "Noisy DQN",
-    "Distributional DQN",
-    "Bootstrapped DQN",
   ]
 draft: true
 ---
@@ -259,7 +257,7 @@ $$
 
 This is DQN: approximate Q-learning with replay buffer, a target network, and reward clipping.
 
-### Implementation
+### Tips & Tricks
 
 There are a few practical issues that can show up when training DQN on Atari games.
 
@@ -287,9 +285,9 @@ nn.LeakyReLU(negative_slope=0.01)
 transition = Transition(state=state, action=action, reward=clipped_reward, next_state=next_state, done=terminated)
 ```
 
-### Demo
+### Atari Pong Demo
 
-Pong is a two-player Atari game. In this demo, our learned policy controls the paddle on the right after about 10 hours of training on a MacBook, and you can see the agent exploiting certain strategies that feel like reward hacking.
+Pong is a two-player Atari game. Here, vanilla DQN uses a Convolutional Neural Network that sees the state as the last four frames stacked together. After about 10 hours of training on a MacBook, the learned policy controls the paddle on the right and starts exploiting certain strategies that feel like reward hacking.
 
 {{< rawhtml >}}
 <video autoplay muted loop playsinline preload="metadata" style="display: block; width: 360px; max-width: 100%; height: auto; margin: 0 auto;">
@@ -299,7 +297,7 @@ Pong is a two-player Atari game. In this demo, our learned policy controls the p
 </video>
 {{< /rawhtml >}}
 
-### Code
+### Implementation
 
 Feel free to take a look at [my implementation on GitHub](https://github.com/elkotito/dqn-implementations). I recommend implementing it yourself rather than having an agent do it. It is the best way to learn.
 
@@ -331,7 +329,7 @@ $$
 P_{\text{Uniform}}(i) = \frac{1}{N}
 $$
 
-With uniform replay, the minibatch gradient estimates:
+With uniform replay, the expected minibatch gradient estimates the average gradient over the whole buffer:
 
 $$
 \nabla_\theta J(\theta)
@@ -339,7 +337,7 @@ $$
 \frac{1}{N}\sum_{i=1}^{N}\nabla_\theta L_i(\theta)
 $$
 
-Prioritized replay samples transition $i$ with probability $P(i)$ instead.
+Prioritized replay samples transition $i$ with probability $P(i)$ instead, so before correction the expectation becomes:
 
 $$
 \nabla_\theta J(\theta) \approx \sum_{i=1}^{N}P(i)\nabla_\theta L_i(\theta)
@@ -369,13 +367,15 @@ $$
 w_i = \frac{1}{N \cdot P(i)}
 $$
 
-In PyTorch, this just means computing a per-sample loss, multiplying it by the weight, and then averaging:
+In PyTorch, this just means computing a per-sample loss for each sampled transition $i_k$, multiplying it by its weight, and then averaging over the batch:
 
 $$
 L(\theta) =
-\frac{1}{B}\sum_{i=1}^{B}
-w_i \frac{1}{2}\left(y_i - q_\theta(s_i, a_i)\right)^2
+\frac{1}{B}\sum_{k=1}^{B}
+w_{i_k} \frac{1}{2}\left(y_{i_k} - q_\theta(s_{i_k}, a_{i_k})\right)^2
 $$
+
+The factor $\frac{1}{B}$ is only the minibatch average. The bias correction still uses $N$ because $P(i)$ is a sampling probability over the replay buffer.
 
 The weights $w_i$ are coefficients on the per-sample losses, but because the final scalar loss is weighted, the gradients with respect to $\theta$ are weighted too.
 
@@ -391,77 +391,33 @@ Sometimes we intentionally want stronger gradients from high-priority samples. E
 
 So Prioritized Replay Buffer usually starts with weaker correction, for example $\beta = 0.4$, and anneals $\beta$ upward toward $1.0$ during training. Later, as the value estimates become more stable, stronger correction reduces the extra influence of high-priority samples and makes the update less biased relative to uniform replay.
 
-### Results
+### Training Curves
 
 Here is one Pong run comparing uniform replay with prioritized replay. The prioritized replay agent reaches positive returns earlier, although both runs end up close after enough environment steps.
 
 ![Pong mean episode return with prioritized replay vs uniform replay](per_return.webp)
 
-The TD-error plot needs a careful interpretation. It is not a direct "lower is always better" comparison between the two agents, because prioritized replay changes what gets sampled. PER deliberately trains on transitions with larger TD errors, so its sampled batch TD error can stay higher even when the policy is improving. Uniform replay sees many easy transitions that the network already predicts well, so its sampled TD error can look lower.
+Since high-priority transitions appear more often in batches, the sampled batch TD error can stay higher while the policy improves.
 
 ![Pong TD error with prioritized replay vs uniform replay](per_td_error.webp)
 
-### Sum Tree
+### Implementation
 
-The replay buffer itself can still be a normal circular buffer: arrays for states, actions, rewards, next states, and done flags. The extra part is an array of priorities, one per stored transition.
+The replay buffer itself can still be a normal circular buffer: arrays for states, actions, rewards, next states, and done flags. The extra part is one priority per stored transition. The algorithm is straightforward:
 
-The naive implementation is straightforward:
+1. Sample a priority-weighted batch from the replay buffer.
+2. Train on that batch and compute the TD error for each sampled transition.
+3. Convert each TD error into a new priority.
+4. Store that priority next to the transition in the regular replay buffer.
 
-1. Store the sampling priority for transition $i$:
+New transitions do not have a TD error yet, so they usually get the current maximum priority. That makes sure they can be sampled at least once.
 
-$$
-\tilde{p}_i = p_i^\alpha
-$$
+The naive sampling approach is to build a probability distribution over the current buffer from these priorities, then sample from that distribution. This works, but it requires scanning across the priority array. Sampling one transition is $O(N)$, so a batch can become expensive for large replay buffers.
 
-2. To sample one transition, compute the total priority:
+A sum tree is a data structure that makes this weighted sampling efficient. It stores priority sums in a binary tree, so we can sample a transition in $O(\log N)$ instead of scanning the whole buffer. Adding a new transition or updating an existing priority is also $O(\log N)$.
 
-$$
-S = \sum_j \tilde{p}_j
-$$
+The actual transitions do not live in the tree. The tree only maps priority mass to replay-buffer indices. The replay buffer can still overwrite old transitions in circular order. When slot $i$ is overwritten, we also replace the tree entry for slot $i$ with the new transition's priority.
 
-3. Draw a random number:
+For the implementation details, see my [prioritized replay buffer code](https://github.com/elkotito/dqn-implementations/blob/main/src/buffers/prioritized_replay_buffer.py).
 
-$$
-u \sim \text{Uniform}(0, S)
-$$
-
-4. Scan through the priority array and return the first index where the cumulative sum passes $u$.
-
-This samples transition $i$ with probability:
-
-$$
-P(i) = \frac{\tilde{p}_i}{S}
-= \frac{p_i^\alpha}{\sum_j p_j^\alpha}
-$$
-
-The problem is the scan. Sampling one transition takes $O(N)$, so sampling a batch takes $O(BN)$. With a replay buffer of one million transitions, this is too slow.
-
-A sum tree stores the same priorities in a binary tree. The leaves contain the sampling priorities $\tilde{p}_i = p_i^\alpha$. Each internal node stores the sum of its two children. Therefore the root stores the total priority:
-
-$$
-S = \sum_j \tilde{p}_j
-$$
-
-To sample, we draw $u \sim \text{Uniform}(0, S)$ and descend the tree:
-
-1. Start at the root.
-2. Look at the left child's sum.
-3. If $u$ is less than or equal to the left sum, go left.
-4. Otherwise subtract the left sum from $u$ and go right.
-5. Repeat until reaching a leaf.
-
-The leaf tells us which replay-buffer index to use. This works because every leaf owns an interval of length $\tilde{p}_i$ inside $[0, S]$. Larger priorities get larger intervals, so they are hit more often.
-
-Updating a priority is also efficient. After training on transition $i$, compute its new TD error, convert it to a new sampling priority $\tilde{p}_i$, and update the leaf. The difference between the new and old leaf value is propagated up to the root by adding that difference to each parent.
-
-So with a sum tree:
-
-1. Sampling takes $O(\log N)$.
-2. Priority updates take $O(\log N)$.
-3. Computing $P(i)$ is easy:
-
-$$
-P(i) = \frac{\text{leaf value for } i}{\text{root value}}
-$$
-
-The actual transitions do not live in the tree. The tree only maps random priority mass to replay-buffer indices. The replay buffer can still overwrite old transitions in circular order; when slot $i$ is overwritten, we also replace leaf $i$ with the new transition's priority.
+## Double DQN
