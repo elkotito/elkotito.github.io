@@ -18,7 +18,7 @@ tags:
     "Distributional DQN",
     "Bootstrapped DQN",
   ]
-draft: false
+draft: true
 ---
 
 ## Introduction
@@ -67,15 +67,18 @@ Now, let's go back to DQN and problems we outlined in the previous article.
 
 ## Problem 1: Correlated Data
 
-Stochastic gradient descent works best when batches give a useful estimate of the training objective. Consecutive RL samples are not like that. During one episode, adjacent states are strongly correlated.
+Stochastic gradient descent works best when batches give a useful estimate of the training objective. In supervised learning, we sample examples independently from the same training distribution and use the minibatch gradient as an unbiased estimate of the expected gradient:
+
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_X[\nabla_\theta L(X, \theta)] \approx
+\frac{1}{B}\sum_{i=1}^{B}\nabla_\theta L(X_i, \theta)
+$$
+
+Consecutive RL samples are not like independently sampled training examples. During one episode, adjacent states are strongly correlated.
 
 Imagine an agent watching the ball move across the screen. Frame $t$ and frame $t+1$ are almost the same. If we train directly on the latest transition at every step, the network sees a long stream from one small region of experience. The gradient points too strongly toward what just happened and too weakly toward the broader game.
 
-This hurts both optimization and behavior. The agent can overfit to recent experience, forget older situations, or move the action-value function in a direction that only makes sense for the latest part of the trajectory.
-
-There is a second effect. The data distribution depends on the policy. If a small parameter update makes "move left" look slightly better than "move right", the $\epsilon$-greedy behavior policy may start visiting more left-side states. After more left-side updates, the estimate may swing again. This feedback between value estimates, actions, and future data is one source of policy oscillation.
-
-Policy oscillation means the learned greedy policy keeps changing because small value changes alter the data the agent sees next, and the new data then pushes the values somewhere else. The policy is not smoothly improving; it is chasing its own recent consequences.
+There is also a distribution problem. In supervised learning, the dataset is usually fixed. In RL, the behavior policy creates the data. If $q_\theta$ changes, then an $\epsilon$-greedy policy may choose different actions and reach different states. If we train only on the newest transitions, the training distribution can immediately become dominated by whatever the current policy just visited, instead of staying stable and well mixed.
 
 ### Experience Replay
 
@@ -143,9 +146,7 @@ $$
 
 Every intermediate value is wrong, but the sequence still moves toward the fixed point. That is the core idea behind the Bellman optimality equation, contraction mappings, and the Banach fixed-point theorem. The target does not need to be correct at every step. It only needs to be a useful next approximation.
 
-The problem in DQN is different. We are not applying the exact recursive equation to the whole action-value function. We are learning from finite, noisy samples using gradient descent. If we just use a noisy sample to update $q_k$, then training might behave in a very unpredictable way.
-
-Ideally, we would like to do something closer to this:
+The problem in DQN is different. We are not applying the exact recursive equation to the whole action-value function. We are learning from finite, noisy samples using gradient descent. If we just use a noisy sample to update $q_k$, then training might behave in a very unpredictable way. Ideally, we would like to do something closer to this:
 
 1. Keep an old action-value function $q_0$ fixed.
 2. Use many noisy samples and many gradient updates to learn a better approximation $q_1$.
@@ -185,7 +186,7 @@ $$
 \theta^- \leftarrow \theta
 $$
 
-Conceptually, the target network plays the role of the old approximation $q_0$. The online network tries to learn a better approximation $q_1$ using many noisy samples and gradient updates. After some time, $q_1$ becomes the new fixed reference point, and the process continues. This makes training less reactive to noisy samples and closer in spirit to approximate value iteration, although there is still no convergence guarantee like in the tabular setting.
+Conceptually, the target network plays the role of the old approximation $q_0$. The online network tries to learn a better approximation $q_1$ using many noisy samples and gradient updates. After some time, $q_1$ becomes the new fixed reference point, and the process continues. This makes training less reactive to noisy samples and closer in spirit to approximate value iteration, although there are still no convergence guarantees like in the tabular setting.
 
 ## Problem 3: Unstable Gradients
 
@@ -202,13 +203,7 @@ $$
 = -\delta \nabla_\theta q_\theta(s, a)
 $$
 
-So the size of the TD error directly scales the update. If rewards have very different magnitudes across games, then the same learning rate can be too small for one game and too large for another. Bootstrapping can amplify this. If one target produces a large Q-value, future targets may contain that large value:
-
-$$
-r + \gamma \max_{a^\prime}q_{\theta^-}(s^\prime, a^\prime)
-$$
-
-Then earlier states learn large values too. If those values are overestimates, the max operator can keep selecting them and propagating them backward.
+So the size of the TD error directly scales the update. Since action-values estimate discounted sums of rewards, larger reward scales lead to larger target values and larger TD errors. If rewards have very different magnitudes across games, then the same learning rate can be too small for one game and too large for another.
 
 ### Reward Clipping
 
@@ -248,7 +243,7 @@ r_i + \gamma \max_{a^\prime} q_{\theta^-}(s_i^\prime, a^\prime), & \text{otherwi
 \end{cases}
 $$
 
-8. Update $\theta$ by minimizing:
+8. Update $\theta$ by minimizing loss function:
 
 $$
 L(\theta) =
@@ -268,25 +263,25 @@ This is DQN: approximate Q-learning with replay buffer, a target network, and re
 
 There are a few practical issues that can show up when training DQN on Atari games.
 
-Store frames as `uint8` in the replay buffer to save memory, then convert and normalize them on the GPU:
+1. Store frames as `uint8` in the replay buffer to save memory, then convert and normalize them on the GPU:
 
 ```python
 states = states.to(self.device).float().div_(255.0)
 ```
 
-If learning stalls early, check the gradient norms. In my runs, very small gradients with Adam made the model fail to learn. Using a larger Adam epsilon helped:
+2. If learning stalls early, check the gradient norms. In my runs, very small gradients with Adam made the model fail to learn. Using a larger Adam epsilon helped:
 
 ```python
 self.optimizer = Adam(self.policy_network.parameters(), lr=config.learning_rate, eps=1e-4)
 ```
 
-I also used `LeakyReLU` instead of `ReLU` in the convolutional neural network to avoid dying ReLU neurons.
+3. I also used `LeakyReLU` instead of `ReLU` in the convolutional neural network to avoid dying ReLU neurons.
 
 ```python
 nn.LeakyReLU(negative_slope=0.01)
 ```
 
-Atari environments return both `terminated` and `truncated`. Only true terminations should stop bootstrapping; time-limit truncations can still use the next-state Q-value.
+4. Atari environments return both `terminated` and `truncated`. Only true terminations should stop bootstrapping; time-limit truncations can still use the next-state Q-value.
 
 ```python
 transition = Transition(state=state, action=action, reward=clipped_reward, next_state=next_state, done=terminated)
@@ -307,3 +302,166 @@ Pong is a two-player Atari game. In this demo, our learned policy controls the p
 ### Code
 
 Feel free to take a look at [my implementation on GitHub](https://github.com/elkotito/dqn-implementations). I recommend implementing it yourself rather than having an agent do it. It is the best way to learn.
+
+## Prioritized Replay Buffer
+
+Uniform replay treats every stored transition as equally useful. That is simple and it already helps a lot, but it is not how learning usually feels. Some transitions are boring because the network already predicts them well. Others are surprising: the reward was unexpected, the state was rare, or the bootstrap target disagrees strongly with the current estimate. The TD error gives us a simple way to measure that surprise:
+
+$$
+\delta_i = y_i - q_\theta(s_i, a_i)
+$$
+
+If $|\delta_i|$ is large, then transition $i$ currently creates a large learning signal. Prioritized replay uses this idea by sampling those transitions more often than transitions with small TD errors. A common priority is:
+
+$$
+p_i = |\delta_i| + \epsilon
+$$
+
+where $\epsilon > 0$ keeps every transition sampleable. Without this small constant, a transition with zero priority might never be seen again, even though it could become useful later after the network changes. Then the sampling probability is:
+
+$$
+P(i) = \frac{p_i^\alpha}{\sum_j p_j^\alpha}
+$$
+
+The parameter $\alpha$ controls how much prioritization we use. If $\alpha = 0$, then $p_i^\alpha = 1$ for every transition, so we end up with uniform replay. If $\alpha$ is larger, high-error transitions are sampled more often. In practice, a common choice is $\alpha = 0.6$. It is enough to prefer high-error transitions, but not so aggressive that the replay buffer is dominated only by the largest errors.
+
+So we changed our sampling distribution. How does that affect the gradient? Before, in uniform replay, we sampled uniformly from the $N$ stored transitions:
+
+$$
+P_{\text{Uniform}}(i) = \frac{1}{N}
+$$
+
+With uniform replay, the minibatch gradient estimates:
+
+$$
+\nabla_\theta J(\theta)
+\approx
+\frac{1}{N}\sum_{i=1}^{N}\nabla_\theta L_i(\theta)
+$$
+
+Prioritized replay samples transition $i$ with probability $P(i)$ instead.
+
+$$
+\nabla_\theta J(\theta) \approx \sum_{i=1}^{N}P(i)\nabla_\theta L_i(\theta)
+$$
+
+That is the bias introduced by prioritized sampling. High-priority transitions are no longer just seen more often, but they also count more in expectation. To correct that bias, multiply each sampled gradient by the ratio between its uniform probability and its prioritized probability:
+
+$$
+\frac{1}{N \cdot P(i)}
+$$
+
+Then the weighted prioritized gradient becomes the uniform replay gradient again:
+
+$$
+\nabla_\theta J(\theta)
+\approx
+\sum_{i=1}^{N}
+P(i)\frac{1}{N \cdot P(i)}\nabla_\theta L_i(\theta)
+= \frac{1}{N}\sum_{i=1}^{N}\nabla_\theta L_i(\theta)
+$$
+
+This may look like it removes the benefit of prioritized replay, but it does not. The bias correction changes the weight of a transition after it has already been sampled. It does not make the sampling process uniform again. High-priority transitions are still selected more often, so the agent spends more updates looking at them.
+
+Implementation-wise, we still need a way to sample high-priority transitions efficiently. More on that in the next section, but once we have these high-priority samples in the batch, we correct the bias by weighting their losses. For the full correction, the weight is:
+
+$$
+w_i = \frac{1}{N \cdot P(i)}
+$$
+
+In PyTorch, this just means computing a per-sample loss, multiplying it by the weight, and then averaging:
+
+$$
+L(\theta) =
+\frac{1}{B}\sum_{i=1}^{B}
+w_i \frac{1}{2}\left(y_i - q_\theta(s_i, a_i)\right)^2
+$$
+
+The weights $w_i$ are coefficients on the per-sample losses, but because the final scalar loss is weighted, the gradients with respect to $\theta$ are weighted too.
+
+In practice, Prioritized Replay Buffer often does not use the full correction immediately. It introduces a parameter $\beta$:
+
+$$
+w_i = \left(\frac{1}{N \cdot P(i)}\right)^\beta
+$$
+
+Here $N$ is the number of transitions in the replay buffer. The parameter $\beta$ controls how strongly we correct the sampling bias. If $\beta = 0$, there is no bias correction. If $\beta = 1$, the bias correction is full.
+
+Sometimes we intentionally want stronger gradients from high-priority samples. Early in training, the policy, targets, and priorities are changing quickly, and high-error transitions often contain the useful signal the network is currently missing. If we fully correct the bias immediately, many of those transitions are downweighted after we sampled them. That can make prioritization less aggressive exactly when we want it to move learning quickly.
+
+So Prioritized Replay Buffer usually starts with weaker correction, for example $\beta = 0.4$, and anneals $\beta$ upward toward $1.0$ during training. Later, as the value estimates become more stable, stronger correction reduces the extra influence of high-priority samples and makes the update less biased relative to uniform replay.
+
+### Results
+
+Here is one Pong run comparing uniform replay with prioritized replay. The prioritized replay agent reaches positive returns earlier, although both runs end up close after enough environment steps.
+
+![Pong mean episode return with prioritized replay vs uniform replay](per_return.webp)
+
+The TD-error plot needs a careful interpretation. It is not a direct "lower is always better" comparison between the two agents, because prioritized replay changes what gets sampled. PER deliberately trains on transitions with larger TD errors, so its sampled batch TD error can stay higher even when the policy is improving. Uniform replay sees many easy transitions that the network already predicts well, so its sampled TD error can look lower.
+
+![Pong TD error with prioritized replay vs uniform replay](per_td_error.webp)
+
+### Sum Tree
+
+The replay buffer itself can still be a normal circular buffer: arrays for states, actions, rewards, next states, and done flags. The extra part is an array of priorities, one per stored transition.
+
+The naive implementation is straightforward:
+
+1. Store the sampling priority for transition $i$:
+
+$$
+\tilde{p}_i = p_i^\alpha
+$$
+
+2. To sample one transition, compute the total priority:
+
+$$
+S = \sum_j \tilde{p}_j
+$$
+
+3. Draw a random number:
+
+$$
+u \sim \text{Uniform}(0, S)
+$$
+
+4. Scan through the priority array and return the first index where the cumulative sum passes $u$.
+
+This samples transition $i$ with probability:
+
+$$
+P(i) = \frac{\tilde{p}_i}{S}
+= \frac{p_i^\alpha}{\sum_j p_j^\alpha}
+$$
+
+The problem is the scan. Sampling one transition takes $O(N)$, so sampling a batch takes $O(BN)$. With a replay buffer of one million transitions, this is too slow.
+
+A sum tree stores the same priorities in a binary tree. The leaves contain the sampling priorities $\tilde{p}_i = p_i^\alpha$. Each internal node stores the sum of its two children. Therefore the root stores the total priority:
+
+$$
+S = \sum_j \tilde{p}_j
+$$
+
+To sample, we draw $u \sim \text{Uniform}(0, S)$ and descend the tree:
+
+1. Start at the root.
+2. Look at the left child's sum.
+3. If $u$ is less than or equal to the left sum, go left.
+4. Otherwise subtract the left sum from $u$ and go right.
+5. Repeat until reaching a leaf.
+
+The leaf tells us which replay-buffer index to use. This works because every leaf owns an interval of length $\tilde{p}_i$ inside $[0, S]$. Larger priorities get larger intervals, so they are hit more often.
+
+Updating a priority is also efficient. After training on transition $i$, compute its new TD error, convert it to a new sampling priority $\tilde{p}_i$, and update the leaf. The difference between the new and old leaf value is propagated up to the root by adding that difference to each parent.
+
+So with a sum tree:
+
+1. Sampling takes $O(\log N)$.
+2. Priority updates take $O(\log N)$.
+3. Computing $P(i)$ is easy:
+
+$$
+P(i) = \frac{\text{leaf value for } i}{\text{root value}}
+$$
+
+The actual transitions do not live in the tree. The tree only maps random priority mass to replay-buffer indices. The replay buffer can still overwrite old transitions in circular order; when slot $i$ is overwritten, we also replace leaf $i$ with the new transition's priority.
