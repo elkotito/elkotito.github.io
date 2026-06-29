@@ -420,4 +420,338 @@ The actual transitions do not live in the tree. The tree only maps priority mass
 
 For the implementation details, see my [prioritized replay buffer code](https://github.com/elkotito/dqn-implementations/blob/main/src/buffers/prioritized_replay_buffer.py).
 
-## Double DQN
+## Overestimation Bias
+
+Target networks made the bootstrap target change more slowly, so we could apply Bellman optimality equations with more confidence and less noise. I also mentioned that target estimates were always wrong, but it was fine, because that was the nature of recurrent Bellman updates.
+
+Though, you can also imagine that if targets were perfectly correct, then the algorithm would converge much faster. Before we try, let's first understand what is wrong with our target estimate.
+
+For one sampled non-terminal transition, the ideal target for that sample would be:
+
+$$
+y^* =
+r + \gamma \max_{a^\prime}q^*(s^\prime, a^\prime)
+$$
+
+DQN does not know $q^*$ so it trains on the estimate:
+
+$$
+\hat y =
+r + \gamma \max_{a^\prime}\hat q_{\theta^-}(s^\prime, a^\prime)
+$$
+
+During that gradient update, $\hat y$ is just a fixed number. The expectation below is only for analysis. It asks what happens if these fixed target-network action-value estimates are noisy estimates of the true action-values.
+
+For each next action $a^\prime$, write the target-network estimate as the true action-value plus an estimation error $\epsilon_{a^\prime}$.
+
+$$
+\hat q_{\theta^-}(s^\prime, a^\prime)
+= q^*(s^\prime, a^\prime) + \epsilon_{a^\prime},
+\qquad
+\mathbb{E}_\epsilon[\epsilon_{a^\prime}] = 0
+$$
+
+So each next action-value estimate is correct on average:
+
+$$
+\mathbb{E}_\epsilon[\hat q_{\theta^-}(s^\prime, a^\prime)]
+= \mathbb{E}_\epsilon[q^*(s^\prime, a^\prime) + \epsilon_{a^\prime}]
+= q^*(s^\prime, a^\prime) + \mathbb{E}_\epsilon[\epsilon_{a^\prime}]
+= q^*(s^\prime, a^\prime)
+$$
+
+Based on that, if we averaged out the noise before taking the max, the max term would match the true optimal value of the sampled next state:
+
+$$
+\max_{a^\prime}
+\mathbb{E}_\epsilon[\hat q_{\theta^-}(s^\prime, a^\prime)] =
+\max_{a^\prime}q^*(s^\prime, a^\prime)
+$$
+
+That is the reference we would want the max term to match. If the max term were equal to this quantity, then the target estimate $\hat y$ would be an unbiased estimator of $y^*$:
+
+$$
+\mathbb{E}_\epsilon[\hat y] = y^*
+$$
+
+Unfortunately, the actual DQN target maximizes the noisy estimates before averaging, so $\mathbb{E}_\epsilon[\hat y] \neq y^*$. It means that the target estimate $\hat y$ is a biased estimator of $y^*$.
+
+$$
+\mathbb{E}_\epsilon[\hat y]
+= \mathbb{E}_\epsilon\left[
+r + \gamma \max_{a^\prime}\hat q_{\theta^-}(s^\prime, a^\prime)
+\right] = r + \gamma
+\mathbb{E}_\epsilon\left[
+\max_{a^\prime}\hat q_{\theta^-}(s^\prime, a^\prime)
+\right]
+$$
+
+$$
+y^* = r + \gamma \max_{a^\prime} q^*(s^\prime, a^\prime) = r + \gamma \max_{a^\prime} \mathbb{E}_\epsilon[\hat q_{\theta^-}(s^\prime, a^\prime)]
+$$
+
+This is not the same as the desirable reference as the estimate from DQN is larger:
+
+$$
+\mathbb{E}_\epsilon\left[
+\max_{a^\prime}\hat q_{\theta^-}(s^\prime, a^\prime)
+\right]
+\geq
+\max_{a^\prime}
+\mathbb{E}_\epsilon[\hat q_{\theta^-}(s^\prime, a^\prime)]
+$$
+
+This follows from Jensen's inequality, because the max over actions is a convex function of the action-value vector.
+
+For a tiny example, assume two actions have true value $0$, and each estimate is independently either $-1$ or $+1$ with equal probability. Each row below has probability $\frac{1}{4}$.
+
+{{< rawhtml >}}
+<div class="centered-table">
+{{< /rawhtml >}}
+
+| $\hat q_1$ | $\hat q_2$ | $\max(\hat q_1, \hat q_2)$ |
+| :--------: | :--------: | :------------------------: |
+|    $-1$    |    $-1$    |            $-1$            |
+|    $-1$    |    $+1$    |            $+1$            |
+|    $+1$    |    $-1$    |            $+1$            |
+|    $+1$    |    $+1$    |            $+1$            |
+
+{{< rawhtml >}}
+</div>
+{{< /rawhtml >}}
+
+If we average before the max, there is no overestimation:
+
+$$
+\mathbb{E}[\hat q_1] = 0,\quad
+\mathbb{E}[\hat q_2] = 0,\quad
+\max_i \mathbb{E}[\hat q_i] = 0
+$$
+
+If we take the max before averaging, there is:
+
+$$
+\mathbb{E}[\max_i \hat q_i]
+= \frac{-1 + 1 + 1 + 1}{4}
+= 0.5
+$$
+
+So DQN can learn values that are too high, not because the rewards or true next-state values are high, but because the bootstrap target repeatedly selects action estimates with positive error terms $\epsilon_{a^\prime}$. The estimates are allowed to be wrong while learning, but this particular error is systematic: the max turns zero-mean errors into an upward push.
+
+### Double DQN
+
+Double DQN does not remove every possible overestimation. It targets one specific source: the maximization bias from using the same noisy values to choose an action and to evaluate it.
+
+DQN already has two networks, but vanilla DQN still uses the target network for both roles:
+
+$$
+y^{\text{DQN}} =
+\begin{cases}
+r, & \text{if } s^\prime \text{ is terminal} \\
+r + \gamma \max_{a^\prime} q_{\theta^-}(s^\prime, a^\prime), & \text{otherwise}
+\end{cases}
+$$
+
+This means the target network is allowed to pick its own largest value and then use that same value as the target. If one action looks best partly because its error term is positive, the max will select exactly that optimistic estimate.
+
+Double DQN separates action selection from action evaluation. The online network chooses the next action:
+
+$$
+a^* = \argmax_{a^\prime} q_\theta(s^\prime, a^\prime)
+$$
+
+Then the target network evaluates only that selected action:
+
+$$
+y^{\text{Double DQN}} =
+\begin{cases}
+r, & \text{if } s^\prime \text{ is terminal} \\
+r + \gamma q_{\theta^-}(s^\prime, a^*), & \text{otherwise}
+\end{cases}
+$$
+
+So Double DQN does not say that the target network is unbiased. If the online network selects an action whose target-network value is too high, Double DQN will still use that high value. The difference is that the target network no longer gets to choose whichever of its own estimates is largest.
+
+To see the bias more explicitly, call the online estimator $A$ and the target estimator $B$:
+
+$$
+\hat q^A(s^\prime, a) = q^*(s^\prime, a) + \epsilon^A_a,
+\qquad
+\hat q^B(s^\prime, a) = q^*(s^\prime, a) + \epsilon^B_a
+$$
+
+Vanilla DQN uses $B$ for both selection and evaluation:
+
+$$
+a_B = \argmax_{a^\prime}\hat q^B(s^\prime, a^\prime)
+$$
+
+So the bootstrap value is:
+
+$$
+\hat q^B(s^\prime, a_B)
+= q^*(s^\prime, a_B) + \epsilon^B_{a_B}
+$$
+
+The selected action $a_B$ is chosen from the same noisy estimates that later evaluate it. Therefore $\epsilon^B_{a_B}$ is likely to be positive, because a positive error can be the reason that action won the max.
+
+Double DQN chooses the action with $A$:
+
+$$
+a_A = \argmax_{a^\prime}\hat q^A(s^\prime, a^\prime)
+$$
+
+but evaluates that selected action with $B$:
+
+$$
+\hat q^B(s^\prime, a_A)
+= q^*(s^\prime, a_A) + \epsilon^B_{a_A}
+$$
+
+Now the selected action can still be wrong, and $B$ can still overestimate it. But if the error in $B$ is roughly independent of the action selected by $A$, then:
+
+$$
+\mathbb{E}[\epsilon^B_{a_A} \mid a_A] \approx 0
+$$
+
+So the evaluated target-network error is no longer selected for being positive by the same max operation. In the ideal independent case:
+
+$$
+\mathbb{E}[\hat q^B(s^\prime, a_A)]
+\approx
+\mathbb{E}[q^*(s^\prime, a_A)]
+\leq
+\max_{a^\prime}q^*(s^\prime, a^\prime)
+$$
+
+The inequality appears because $a_A$ is not guaranteed to be the truly optimal action. Double DQN can still select a suboptimal action, and it can still use an overestimated value. What it avoids is taking the largest value from the target network just because that value is the largest.
+
+In practice the two networks are correlated, because $\theta^-$ is copied from $\theta$, so the independence assumption is only approximate. This is why Double DQN reduces overestimation rather than removing it completely.
+
+## Dueling DQN
+
+A normal DQN directly predicts one value per action:
+
+$$
+q_\theta(s, a)
+$$
+
+However in many states, knowing that the state is good or bad is easier than knowing the exact best action. Imagine Pong when the ball is on the opposite side of the screen. Moving the paddle up, down, or doing nothing for one frame may lead to almost the same long-term outcome. One slightly bad move does not decide the point, because there is still time to correct. In that kind of state, the action-values share a large common part: the position is either generally promising or generally dangerous, regardless of the exact next action. There are also make-or-break states. If the ball is about to pass the paddle, then moving in the correct direction and moving in the wrong direction can have very different values. In those states, the action-specific part matters a lot.
+
+A normal DQN does share hidden layers across actions, so the action outputs are not completely independent. Still, the last layer has to output the full value for every action. Dueling DQN makes the decomposition explicit by representing action-values with two streams:
+
+- A state-value stream $v_\theta(s)$, which outputs one number.
+- A raw advantage stream $\tilde A_\theta(s, a)$, which outputs one number per action.
+
+The value stream tries to capture the common part: how good this state is before caring too much about the exact action. The advantage stream captures the action-dependent residual: which actions are better or worse than the others in this state.
+
+Conceptually, the advantage of an action under a policy $\pi$ is:
+
+$$
+A^\pi(s, a) = q^\pi(s, a) - v^\pi(s)
+$$
+
+It tells us how much better or worse action $a$ is than the policy's usual value in state $s$. Dueling DQN borrows this idea, but the network is not given separate targets for $v^\pi$ and $A^\pi$. It only receives a TD target for $q_\theta(s, a)$. For that reason, I write the advantage head as $\tilde A_\theta(s, a)$: it is a raw, parameterized advantage-like output that will be normalized before being combined with $v_\theta(s)$.
+
+This is the main motivation for the decomposition. In a normal single-stream DQN update, the TD loss is applied to the output for the sampled action $a$. The shared hidden layers can still change, but the other action outputs do not receive their own direct TD error in that update. In the dueling architecture, every sampled transition updates the value stream $v_\theta(s)$, because $v_\theta(s)$ contributes to every action-value built from that state.
+
+So when many actions are similar, the network does not need to relearn the same state-quality signal separately for each action output. It can spend more capacity on estimating the state value well, and then let the advantage stream learn the smaller differences between actions. This matters for temporal-difference learning, because the bootstrap target depends on having accurate next-state values. It also explains why the dueling architecture becomes more useful when the action space is large: with more actions, there are more cases where many action-values share the same common state-value part.
+
+The naive decomposition is:
+
+$$
+q_\theta(s, a) = v_\theta(s) + \tilde A_\theta(s, a)
+$$
+
+But this is not identifiable. For any constant $c(s)$:
+
+$$
+v_\theta(s) + \tilde A_\theta(s, a)
+= \left(v_\theta(s) + c(s)\right) + \left(\tilde A_\theta(s, a) - c(s)\right)
+$$
+
+The same $q_\theta(s, a)$ can be represented in infinitely many ways. The network could add $10$ to the value stream and subtract $10$ from every advantage output, and the final $q_\theta(s, a)$ would not change. So the decomposition needs an anchor.
+
+One possible anchor is to subtract the largest raw advantage:
+
+$$
+q_\theta(s, a_i) =
+v_\theta(s) +
+\left(
+\tilde A_\theta(s, a_i) -
+\max_j \tilde A_\theta(s, a_j)
+\right)
+$$
+
+This makes the best raw advantage equal to zero after normalization. It matches the intuition that if $v_\theta(s)$ means "the value of the best action", then every worse action has non-positive advantage.
+
+For example, suppose a state has two true optimal action-values:
+
+$$
+q^*(s, a_1) = 100,\qquad q^*(s, a_2) = 1
+$$
+
+If $v^*(s)$ is interpreted as the best action-value, then $v^*(s) = \max_a q^*(s, a) = 100$. The optimal advantage relative to that best action is:
+
+$$
+A^*(s, a_1) = 0,\qquad A^*(s, a_2) = -99
+$$
+
+This is the "lost opportunity" interpretation: taking $a_2$ is $99$ points worse than the best available action.
+
+In practice, Dueling DQN usually uses a mean-subtraction anchor instead:
+
+$$
+q_\theta(s, a) =
+v_\theta(s) +
+\left(
+\tilde A_\theta(s, a) -
+\frac{1}{|\mathcal{A}|}\sum_b \tilde A_\theta(s, b)
+\right)
+$$
+
+Now the normalized advantages have average zero:
+
+$$
+\frac{1}{|\mathcal{A}|}\sum_a
+\left(
+\tilde A_\theta(s, a) -
+\frac{1}{|\mathcal{A}|}\sum_b \tilde A_\theta(s, b)
+\right)
+= 0
+$$
+
+So the average action-value in a state is exactly the value stream:
+
+$$
+\frac{1}{|\mathcal{A}|}\sum_a q_\theta(s, a) = v_\theta(s)
+$$
+
+With the two-action example above, the mean version would represent the same values as:
+
+$$
+v(s) = 50.5,\qquad \bar A(s, a_1) = 49.5,\qquad \bar A(s, a_2) = -49.5
+$$
+
+The bad action is still $99$ points worse than the good action, because:
+
+$$
+49.5 - (-49.5) = 99
+$$
+
+So the mean version no longer makes $v(s)$ equal to the best action-value. It makes $v(s)$ equal to the average action-value under the network's current outputs. That is okay because the point of the dueling architecture is not to recover a separately supervised "true" value stream and "true" advantage stream. The point is to give the network a useful way to build $q_\theta(s, a)$.
+
+This also answers the question "how do we estimate the advantage?" We do not create a separate target for $A^\pi(s, a)$ or $A^*(s, a)$. The network outputs $v_\theta(s)$ and raw advantages $\tilde A_\theta(s, a)$, combines them into $q_\theta(s, a)$, and trains with the same TD error as before:
+
+$$
+L(\theta) =
+\left(
+y - q_\theta(s, a)
+\right)^2
+$$
+
+The gradient from this loss updates both streams. If the state is like the ball-far-away example, most of the learning can go into the common state-value stream. If the state is make-or-break, the advantage stream can learn large differences between actions.
+
+Subtracting the max or subtracting the mean is therefore not an extra estimator of advantage. It is a normalization choice that removes the arbitrary offset between $v_\theta(s)$ and $\tilde A_\theta(s, a)$. Subtracting the max has a clean "best action has zero advantage" interpretation, but the max operation can make optimization less smooth because only the maximal raw advantage defines the anchor. Subtracting the mean gives a smoother, more stable parameterization and preserves the action ranking, because it subtracts the same state-dependent constant from every action.
+
+Dueling DQN does not change the DQN or Double DQN target; it only changes how $q_\theta(s, a)$ is represented.

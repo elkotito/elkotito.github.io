@@ -35,3 +35,13 @@
 .katex-display::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.4);
 }
+
+.post-content .centered-table {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.post-content .centered-table table {
+  width: auto;
+}
