@@ -1,5 +1,5 @@
 ---
-title: "Reinforcement Learning 104: Deep Q-Networks (Part 1)"
+title: "Reinforcement Learning 104: Deep Q-Networks"
 description: "Deep Q-Networks: DQN, Experience Replay, Prioritized Experience Replay, Target Networks, Reward Clipping, Overestimation Bias, Double DQN, Dueling DQN."
 date: 2026-06-26
 tags:
@@ -440,7 +440,7 @@ $$
 r + \gamma \max_{a^\prime}\hat q_{\theta^-}(s^\prime, a^\prime)
 $$
 
-During that gradient update, $\hat y$ is just a fixed number. The expectation below is only for analysis. It asks what happens if these fixed target-network action-value estimates are noisy estimates of the true action-values.
+During that gradient update, $\hat y$ is just a fixed number. Below is a mathematical analysis of fixed target-network action-value estimates being noisy estimates of the true action-values.
 
 For each next action $a^\prime$, write the target-network estimate as the true action-value plus an estimation error $\epsilon_{a^\prime}$.
 
@@ -451,7 +451,7 @@ $$
 \mathbb{E}_\epsilon[\epsilon_{a^\prime}] = 0
 $$
 
-So each next action-value estimate is correct on average:
+Then each next action-value estimate is correct on average:
 
 $$
 \mathbb{E}_\epsilon[\hat q_{\theta^-}(s^\prime, a^\prime)]
@@ -490,7 +490,11 @@ $$
 y^* = r + \gamma \max_{a^\prime} q^*(s^\prime, a^\prime) = r + \gamma \max_{a^\prime} \mathbb{E}_\epsilon[\hat q_{\theta^-}(s^\prime, a^\prime)]
 $$
 
-This is not the same as the desirable reference as the estimate from DQN is larger:
+$$
+\mathbb{E}_\epsilon[\hat y] \ge y^*
+$$
+
+We don't achieve the desirable unbiased estimator, because the estimate from DQN is larger. That's why we call it overestimation bias.
 
 $$
 \mathbb{E}_\epsilon\left[
@@ -531,104 +535,103 @@ $$
 If we take the max before averaging, there is:
 
 $$
-\mathbb{E}[\max_i \hat q_i]
+\mathbb{E}[\max(\hat q_1, \hat q_2)]
 = \frac{-1 + 1 + 1 + 1}{4}
 = 0.5
 $$
 
-So DQN can learn values that are too high, not because the rewards or true next-state values are high, but because the bootstrap target repeatedly selects action estimates with positive error terms $\epsilon_{a^\prime}$. The estimates are allowed to be wrong while learning, but this particular error is systematic: the max turns zero-mean errors into an upward push.
+A takeaway is that DQN can learn values that are too high, not because the rewards or true next-state values are high, but because the bootstrap target repeatedly selects action estimates with positive error terms $\epsilon_{a^\prime}$.
 
 ### Double DQN
 
-Double DQN does not remove every possible overestimation. It targets one specific source: the maximization bias from using the same noisy values to choose an action and to evaluate it.
-
-DQN already has two networks, but vanilla DQN still uses the target network for both roles:
+In the overestimation section, the bad term was:
 
 $$
-y^{\text{DQN}} =
-\begin{cases}
-r, & \text{if } s^\prime \text{ is terminal} \\
-r + \gamma \max_{a^\prime} q_{\theta^-}(s^\prime, a^\prime), & \text{otherwise}
-\end{cases}
+\mathbb{E}\left[
+\max_{a^\prime}\hat q_{\theta^-}(s^\prime, a^\prime)
+\right]
 $$
 
-This means the target network is allowed to pick its own largest value and then use that same value as the target. If one action looks best partly because its error term is positive, the max will select exactly that optimistic estimate.
+Double DQN changes this by not using target network to choose the action whose value will appear in the target and start using online network instead.
 
-Double DQN separates action selection from action evaluation. The online network chooses the next action:
+The online network $q_\theta$ chooses the next action:
 
 $$
-a^* = \argmax_{a^\prime} q_\theta(s^\prime, a^\prime)
+a_\theta = \argmax_{a^\prime} q_\theta(s^\prime, a^\prime)
 $$
 
-Then the target network evaluates only that selected action:
+The target network $q_{\theta^-}$ evaluates that selected action:
 
 $$
 y^{\text{Double DQN}} =
 \begin{cases}
 r, & \text{if } s^\prime \text{ is terminal} \\
-r + \gamma q_{\theta^-}(s^\prime, a^*), & \text{otherwise}
+r + \gamma q_{\theta^-}(s^\prime, a_\theta), & \text{otherwise}
 \end{cases}
 $$
 
-So Double DQN does not say that the target network is unbiased. If the online network selects an action whose target-network value is too high, Double DQN will still use that high value. The difference is that the target network no longer gets to choose whichever of its own estimates is largest.
-
-To see the bias more explicitly, call the online estimator $A$ and the target estimator $B$:
+So the max is still there, but it is only used to choose an action index:
 
 $$
-\hat q^A(s^\prime, a) = q^*(s^\prime, a) + \epsilon^A_a,
-\qquad
-\hat q^B(s^\prime, a) = q^*(s^\prime, a) + \epsilon^B_a
+q_{\theta^-}\left(
+s^\prime,
+\argmax_{a^\prime} q_\theta(s^\prime, a^\prime)
+\right)
 $$
 
-Vanilla DQN uses $B$ for both selection and evaluation:
+As you can see, the target-network value used to evaluate the selected action is not the maximum anymore, but the value at the index selected by the online network. Having said that, if we condition on the action selected by the online network, then maximization bias disappears:
 
 $$
-a_B = \argmax_{a^\prime}\hat q^B(s^\prime, a^\prime)
+\mathbb{E}_{\epsilon^-}\left[
+\hat y \mid a_\theta
+\right] = r + \gamma
+\mathbb{E}_{\epsilon^-}\left[
+q_{\theta^-}(s^\prime, a_\theta)
+\right]
+= r + \gamma q^*(s^\prime, a_\theta) = y^*
 $$
 
-So the bootstrap value is:
+You might say that the online network can be noisy too. You are right. In the expectation above we assumed that a decision $a_\theta$ was already made and we computed expectation for $\epsilon^-$.
+
+Let's go back to the tiny two-action example from the previous section where $q^*(a_1)=q^*(a_2)=0$. Now let $\epsilon^\theta_i$ be the online-network error for action $a_i$, and let $\epsilon^-_i$ be the target-network error.
+
+The online network selects one of the two actions:
 
 $$
-\hat q^B(s^\prime, a_B)
-= q^*(s^\prime, a_B) + \epsilon^B_{a_B}
+a_\theta
+= \argmax_a q_\theta(s^\prime, a)
+= \argmax(\epsilon^\theta_1,\epsilon^\theta_2)
 $$
 
-The selected action $a_B$ is chosen from the same noisy estimates that later evaluate it. Therefore $\epsilon^B_{a_B}$ is likely to be positive, because a positive error can be the reason that action won the max.
-
-Double DQN chooses the action with $A$:
+The target network evaluates that selected action:
 
 $$
-a_A = \argmax_{a^\prime}\hat q^A(s^\prime, a^\prime)
+q_{\theta^-}(s^\prime, a_\theta)
+= \epsilon^-_{a_\theta}
 $$
 
-but evaluates that selected action with $B$:
+Now average the Double DQN value. The selected action $a_\theta$ is determined by the online-network errors $\epsilon^\theta_1$ and $\epsilon^\theta_2$.
 
 $$
-\hat q^B(s^\prime, a_A)
-= q^*(s^\prime, a_A) + \epsilon^B_{a_A}
+\begin{aligned}
+\mathbb{E}[q_{\theta^-}(s^\prime, a_\theta)]
+&= \mathbb{E}[\epsilon^-_{a_\theta}]
+&& {\scriptsize\text{(because } q^*(a_1)=q^*(a_2)=0 \text{)}} \\[0.5em]
+&= P(a_\theta=a_1)\mathbb{E}[\epsilon^-_1 \mid a_\theta=a_1] + P(a_\theta=a_2)\mathbb{E}[\epsilon^-_2 \mid a_\theta=a_2]
+&& {\scriptsize\text{(law of total expectation)}} \\[0.5em]
+&= P(a_\theta=a_1)\mathbb{E}[\epsilon^-_1] + P(a_\theta=a_2)\mathbb{E}[\epsilon^-_2]
+&& {\scriptsize\text{(selection is independent of target noise)}} \\[0.5em]
+&= P(a_\theta=a_1)\cdot 0 + P(a_\theta=a_2)\cdot 0
+&& {\scriptsize\text{(zero-mean target-network errors)}} \\[0.5em]
+&= 0
+\end{aligned}
 $$
 
-Now the selected action can still be wrong, and $B$ can still overestimate it. But if the error in $B$ is roughly independent of the action selected by $A$, then:
+This equation tells us that, if the target-network noise is independent of the noise that selected the action, the target network does not add a positive error on average just because an action was selected.
 
-$$
-\mathbb{E}[\epsilon^B_{a_A} \mid a_A] \approx 0
-$$
+This independence is the key assumption: the noise used to select the action, $\epsilon^\theta$, should be independent of the noise used to evaluate that action, $\epsilon^-$. In practice the two networks are not fully independent, because $\theta^-$ is periodically copied from $\theta$. Having said that, Double DQN reduces this overestimation bias rather than removing it completely.
 
-So the evaluated target-network error is no longer selected for being positive by the same max operation. In the ideal independent case:
-
-$$
-\mathbb{E}[\hat q^B(s^\prime, a_A)]
-\approx
-\mathbb{E}[q^*(s^\prime, a_A)]
-\leq
-\max_{a^\prime}q^*(s^\prime, a^\prime)
-$$
-
-The inequality appears because $a_A$ is not guaranteed to be the truly optimal action. Double DQN can still select a suboptimal action, and it can still use an overestimated value. What it avoids is taking the largest value from the target network just because that value is the largest.
-
-In practice the two networks are correlated, because $\theta^-$ is copied from $\theta$, so the independence assumption is only approximate. This is why Double DQN reduces overestimation rather than removing it completely.
-
-## Dueling DQN
+<!--## Dueling DQN
 
 A normal DQN directly predicts one value per action:
 
@@ -754,4 +757,4 @@ The gradient from this loss updates both streams. If the state is like the ball-
 
 Subtracting the max or subtracting the mean is therefore not an extra estimator of advantage. It is a normalization choice that removes the arbitrary offset between $v_\theta(s)$ and $\tilde A_\theta(s, a)$. Subtracting the max has a clean "best action has zero advantage" interpretation, but the max operation can make optimization less smooth because only the maximal raw advantage defines the anchor. Subtracting the mean gives a smoother, more stable parameterization and preserves the action ranking, because it subtracts the same state-dependent constant from every action.
 
-Dueling DQN does not change the DQN or Double DQN target; it only changes how $q_\theta(s, a)$ is represented.
+Dueling DQN does not change the DQN or Double DQN target; it only changes how $q_\theta(s, a)$ is represented.-->
