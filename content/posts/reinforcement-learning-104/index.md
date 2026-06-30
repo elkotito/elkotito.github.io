@@ -629,7 +629,7 @@ $$
 
 This equation tells us that, if the target-network noise is independent of the noise that selected the action, the target network does not add a positive error on average just because an action was selected.
 
-This independence is the key assumption: the noise used to select the action, $\epsilon^\theta$, should be independent of the noise used to evaluate that action, $\epsilon^-$. In practice the two networks are not fully independent, because $\theta^-$ is periodically copied from $\theta$. Having said that, Double DQN reduces this overestimation bias rather than removing it completely.
+This independence is the key assumption. The noise $\epsilon^\theta$ used to select the action should be independent of the noise $\epsilon^-$ used to evaluate that action. In practice the two networks are not fully independent, because $\theta^-$ is periodically copied from $\theta$. Having said that, Double DQN reduces this overestimation bias rather than removing it completely.
 
 <!--## Dueling DQN
 
